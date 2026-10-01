@@ -1,0 +1,616 @@
+import { AsignacionTutorado, AsignarTutoradoPayload, ApiResponse, EstadoTutorado, NotaSeguimiento, EstudianteCatalogo, CitaAsesoria, SolicitarAsesoriaPayload, Tutor } from '../types/tutoria';
+import { ASIGNACIONES_INICIALES, CATALOGO_ESTUDIANTES, TUTORES_DEMO } from '../data/mockData';
+
+const STORAGE_KEY = 'sistema_tutorias_asignaciones_v1';
+const CITAS_STORAGE_KEY = 'sistema_tutorias_citas_v1';
+
+export const CITAS_INICIALES: CitaAsesoria[] = [
+  {
+    id: 'cita-001',
+    estudianteId: 'est-101', // Ana Lucía
+    tutorId: 'tutor-001', // Dr. Roberto Mendoza
+    fecha: '2026-10-05',
+    hora: '11:00 AM',
+    tema: 'Revisión de Avance en Proyecto de Titulación',
+    modalidad: 'Presencial',
+    estado: 'Confirmada',
+    lugar: 'Edificio B, Cubículo 204',
+    motivoDetalle: 'Presentar avance del marco teórico y anteproyecto de IA.'
+  },
+  {
+    id: 'cita-002',
+    estudianteId: 'est-102', // Diego Alejandro (en riesgo)
+    tutorId: 'tutor-001',
+    fecha: '2026-10-07',
+    hora: '04:00 PM',
+    tema: 'Estrategia de Regularización en Cálculo Vectorial',
+    modalidad: 'Presencial',
+    estado: 'Confirmada',
+    lugar: 'Edificio B, Cubículo 204',
+    motivoDetalle: 'Revisar temario de examen extraordinario y asesoría de matemáticas.'
+  },
+  {
+    id: 'cita-003',
+    estudianteId: 'est-103', // Mariana Celeste
+    tutorId: 'tutor-001',
+    fecha: '2026-10-12',
+    hora: '10:00 AM',
+    tema: 'Orientación para Selección de Materias Optativas',
+    modalidad: 'Virtual',
+    estado: 'Pendiente',
+    enlaceVirtual: 'https://meet.google.com/xyz-tutor-2026',
+    motivoDetalle: 'Dudas sobre carga horaria y requisitos de materias del 3er semestre.'
+  }
+];
+
+export interface HttpLogEntry {
+  id: string;
+  timestamp: string;
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  endpoint: string;
+  status: number;
+  headers: Record<string, string>;
+  requestBody?: any;
+  responseBody: any;
+  durationMs: number;
+}
+
+class TutoriaBackendService {
+  private asignaciones: AsignacionTutorado[] = [];
+  private citas: CitaAsesoria[] = [];
+  private httpLogs: HttpLogEntry[] = [];
+  private listeners: Array<() => void> = [];
+
+  constructor() {
+    this.initData();
+  }
+
+  private initData() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        this.asignaciones = JSON.parse(stored);
+      } else {
+        this.asignaciones = [...ASIGNACIONES_INICIALES];
+        this.save();
+      }
+
+      const storedCitas = localStorage.getItem(CITAS_STORAGE_KEY);
+      if (storedCitas) {
+        this.citas = JSON.parse(storedCitas);
+      } else {
+        this.citas = [...CITAS_INICIALES];
+        this.saveCitas();
+      }
+    } catch {
+      this.asignaciones = [...ASIGNACIONES_INICIALES];
+      this.citas = [...CITAS_INICIALES];
+    }
+  }
+
+  private save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.asignaciones));
+    this.notify();
+  }
+
+  private saveCitas() {
+    localStorage.setItem(CITAS_STORAGE_KEY, JSON.stringify(this.citas));
+    this.notify();
+  }
+
+  public subscribe(cb: () => void) {
+    this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== cb);
+    };
+  }
+
+  private notify() {
+    this.listeners.forEach(cb => cb());
+  }
+
+  public getHttpLogs(): HttpLogEntry[] {
+    return [...this.httpLogs].reverse();
+  }
+
+  public clearHttpLogs(): void {
+    this.httpLogs = [];
+    this.notify();
+  }
+
+  private logHttp(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    endpoint: string,
+    status: number,
+    tutorId: string,
+    responseBody: any,
+    requestBody?: any
+  ) {
+    const entry: HttpLogEntry = {
+      id: 'log-' + Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toLocaleTimeString(),
+      method,
+      endpoint,
+      status,
+      headers: {
+        'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.user_${tutorId}`,
+        'Content-Type': 'application/json'
+      },
+      requestBody,
+      responseBody,
+      durationMs: Math.floor(Math.random() * 30) + 15
+    };
+    this.httpLogs.push(entry);
+    if (this.httpLogs.length > 50) this.httpLogs.shift();
+  }
+
+  /**
+   * ENDPOINT: GET /api/tutor/tutorados
+   * Requerimiento 2: Listar únicamente a los tutorados que le pertenecen al tutor autenticado
+   * Seguridad: Filtra obligatoriamente por tutorId extraído del token JWT (req.user.id)
+   */
+  public async getMisTutorados(
+    tutorId: string,
+    filters?: { search?: string; estado?: string; periodo?: string; semestre?: string }
+  ): Promise<ApiResponse<AsignacionTutorado[]>> {
+    const tutor = TUTORES_DEMO.find(t => t.id === tutorId);
+    if (!tutor) {
+      const errRes: ApiResponse<AsignacionTutorado[]> = {
+        success: false,
+        message: 'No autorizado: Token de tutor inválido o caducado.',
+        statusCode: 401,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('GET', '/api/tutor/tutorados', 401, tutorId, errRes);
+      return errRes;
+    }
+
+    // Regla de Negocio Crítica: Filtrar SOLO las asignaciones de este tutor
+    let resultados = this.asignaciones.filter(a => a.tutorId === tutorId);
+
+    if (filters?.estado && filters.estado !== 'TODOS') {
+      resultados = resultados.filter(a => a.estado === filters.estado);
+    }
+
+    if (filters?.periodo && filters.periodo !== 'TODOS') {
+      resultados = resultados.filter(a => a.periodoEscolar === filters.periodo);
+    }
+
+    if (filters?.semestre && filters.semestre !== 'TODOS') {
+      const semNum = parseInt(filters.semestre, 10);
+      if (!isNaN(semNum)) {
+        resultados = resultados.filter(a => a.estudiante.semestre === semNum);
+      }
+    }
+
+    if (filters?.search?.trim()) {
+      const query = filters.search.toLowerCase().trim();
+      resultados = resultados.filter(a =>
+        a.estudiante.nombre.toLowerCase().includes(query) ||
+        a.estudiante.matricula.toLowerCase().includes(query) ||
+        a.estudiante.email.toLowerCase().includes(query) ||
+        a.estudiante.carrera.toLowerCase().includes(query)
+      );
+    }
+
+    // Ordenar alfabéticamente por nombre de estudiante
+    resultados.sort((a, b) => a.estudiante.nombre.localeCompare(b.estudiante.nombre));
+
+    const response: ApiResponse<AsignacionTutorado[]> = {
+      success: true,
+      message: `Se recuperaron ${resultados.length} tutorados asignados al tutor ${tutor.nombre}.`,
+      data: resultados,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    const queryParams = new URLSearchParams();
+    if (filters?.search) queryParams.set('search', filters.search);
+    if (filters?.estado && filters.estado !== 'TODOS') queryParams.set('estado', filters.estado);
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+    this.logHttp('GET', `/api/tutor/tutorados${queryString}`, 200, tutorId, response);
+    return response;
+  }
+
+  /**
+   * ENDPOINT: POST /api/tutor/tutorados
+   * Requerimiento 2: Registrar o vincular un nuevo tutorado al tutor en sesión
+   */
+  public async asignarTutorado(
+    tutorId: string,
+    payload: AsignarTutoradoPayload
+  ): Promise<ApiResponse<AsignacionTutorado>> {
+    const tutor = TUTORES_DEMO.find(t => t.id === tutorId);
+    if (!tutor) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: 'No autorizado: Token de sesión inválido.',
+        statusCode: 401,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', '/api/tutor/tutorados', 401, tutorId, errRes, payload);
+      return errRes;
+    }
+
+    const term = payload.estudianteEmailOrMatricula.trim().toLowerCase();
+    if (!term) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: 'Debe ingresar un correo institucional o matrícula válida.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', '/api/tutor/tutorados', 400, tutorId, errRes, payload);
+      return errRes;
+    }
+
+    // 1. Buscar al estudiante en el catálogo institucional general
+    const estudianteEncontrado = CATALOGO_ESTUDIANTES.find(
+      e => e.email.toLowerCase() === term || e.matricula.toLowerCase() === term
+    );
+
+    if (!estudianteEncontrado) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: `El estudiante con identificador "${payload.estudianteEmailOrMatricula}" no se encuentra registrado en el catálogo institucional.`,
+        error: 'STUDENT_NOT_FOUND',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', '/api/tutor/tutorados', 404, tutorId, errRes, payload);
+      return errRes;
+    }
+
+    // 2. Verificar si YA está asignado a ESTE tutor en el mismo periodo
+    const yaAsignadoConmigo = this.asignaciones.find(
+      a => a.tutorId === tutorId &&
+           a.estudianteId === estudianteEncontrado.id &&
+           a.periodoEscolar === payload.periodoEscolar
+    );
+
+    if (yaAsignadoConmigo) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: `El estudiante ${estudianteEncontrado.nombre} ya forma parte de tu lista de tutorados para el periodo ${payload.periodoEscolar}.`,
+        error: 'ALREADY_ASSIGNED_TO_CALLER',
+        statusCode: 409,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', '/api/tutor/tutorados', 409, tutorId, errRes, payload);
+      return errRes;
+    }
+
+    // 3. Verificar si está asignado a OTRO tutor en el mismo periodo (regla 1:N)
+    const asignadoAOtroTutor = this.asignaciones.find(
+      a => a.estudianteId === estudianteEncontrado.id &&
+           a.periodoEscolar === payload.periodoEscolar &&
+           a.tutorId !== tutorId
+    );
+
+    if (asignadoAOtroTutor) {
+      const otroTutor = TUTORES_DEMO.find(t => t.id === asignadoAOtroTutor.tutorId);
+      const nombreOtroTutor = otroTutor ? otroTutor.nombre : 'otro tutor';
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: `Conflicto de asignación: ${estudianteEncontrado.nombre} ya tiene asignado como tutor a ${nombreOtroTutor} para el ciclo ${payload.periodoEscolar}. Se requiere una reasignación formal.`,
+        error: 'STUDENT_HAS_DIFFERENT_TUTOR',
+        statusCode: 409,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', '/api/tutor/tutorados', 409, tutorId, errRes, payload);
+      return errRes;
+    }
+
+    // 4. Crear el nuevo registro de asignación (Entidad TutorAsignacion)
+    const nuevaAsignacion: AsignacionTutorado = {
+      id: `asig-${Date.now().toString(36)}`,
+      tutorId: tutorId,
+      estudianteId: estudianteEncontrado.id,
+      estudiante: estudianteEncontrado,
+      fechaAsignacion: new Date().toISOString(),
+      periodoEscolar: payload.periodoEscolar || '2026-1',
+      estado: payload.estadoInicial || 'ACTIVO',
+      observaciones: payload.observaciones?.trim() || 'Asignado por el tutor mediante plataforma.',
+      notas: []
+    };
+
+    this.asignaciones.push(nuevaAsignacion);
+    this.save();
+
+    const okRes: ApiResponse<AsignacionTutorado> = {
+      success: true,
+      message: `Estudiante ${estudianteEncontrado.nombre} (${estudianteEncontrado.matricula}) asignado exitosamente a su tutela.`,
+      data: nuevaAsignacion,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('POST', '/api/tutor/tutorados', 201, tutorId, okRes, payload);
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: DELETE /api/tutor/tutorados/:id
+   * Desvincular un tutorado garantizando que pertenezca al tutor autenticado
+   */
+  public async desasignarTutorado(
+    tutorId: string,
+    asignacionId: string
+  ): Promise<ApiResponse<{ id: string }>> {
+    const idx = this.asignaciones.findIndex(a => a.id === asignacionId);
+
+    if (idx === -1) {
+      const errRes: ApiResponse<{ id: string }> = {
+        success: false,
+        message: 'La asignación de tutoría especificada no existe.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('DELETE', `/api/tutor/tutorados/${asignacionId}`, 404, tutorId, errRes);
+      return errRes;
+    }
+
+    // VALIDACIÓN DE SEGURIDAD IDOR: ¿El registro pertenece al tutor que llama?
+    if (this.asignaciones[idx].tutorId !== tutorId) {
+      const errRes: ApiResponse<{ id: string }> = {
+        success: false,
+        message: 'Acceso denegado: No tiene permisos para desvincular un tutorado que pertenece a otro tutor.',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('DELETE', `/api/tutor/tutorados/${asignacionId}`, 403, tutorId, errRes);
+      return errRes;
+    }
+
+    const removido = this.asignaciones.splice(idx, 1)[0];
+    this.save();
+
+    const okRes: ApiResponse<{ id: string }> = {
+      success: true,
+      message: `Tutorado ${removido.estudiante.nombre} desvinculado satisfactoriamente.`,
+      data: { id: asignacionId },
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('DELETE', `/api/tutor/tutorados/${asignacionId}`, 200, tutorId, okRes);
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: PATCH /api/tutor/tutorados/:id/estado
+   */
+  public async actualizarEstado(
+    tutorId: string,
+    asignacionId: string,
+    nuevoEstado: EstadoTutorado,
+    observacion?: string
+  ): Promise<ApiResponse<AsignacionTutorado>> {
+    const asig = this.asignaciones.find(a => a.id === asignacionId);
+
+    if (!asig) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: 'Asignación no encontrada.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('PATCH', `/api/tutor/tutorados/${asignacionId}/estado`, 404, tutorId, errRes);
+      return errRes;
+    }
+
+    if (asig.tutorId !== tutorId) {
+      const errRes: ApiResponse<AsignacionTutorado> = {
+        success: false,
+        message: 'Acceso denegado: El alumno no le pertenece a este tutor.',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('PATCH', `/api/tutor/tutorados/${asignacionId}/estado`, 403, tutorId, errRes);
+      return errRes;
+    }
+
+    asig.estado = nuevoEstado;
+    if (observacion) {
+      asig.observaciones = observacion;
+    }
+    this.save();
+
+    const okRes: ApiResponse<AsignacionTutorado> = {
+      success: true,
+      message: `Estado de tutoría actualizado a ${nuevoEstado}.`,
+      data: asig,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('PATCH', `/api/tutor/tutorados/${asignacionId}/estado`, 200, tutorId, okRes, {
+      estado: nuevoEstado,
+      observacion
+    });
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: POST /api/tutor/tutorados/:id/notas
+   * Agregar una nota de seguimiento o sesión
+   */
+  public async agregarNota(
+    tutorId: string,
+    asignacionId: string,
+    tipo: NotaSeguimiento['tipo'],
+    contenido: string
+  ): Promise<ApiResponse<NotaSeguimiento>> {
+    const asig = this.asignaciones.find(a => a.id === asignacionId);
+
+    if (!asig || asig.tutorId !== tutorId) {
+      const errRes: ApiResponse<NotaSeguimiento> = {
+        success: false,
+        message: 'Asignación no válida o no autorizada.',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      };
+      this.logHttp('POST', `/api/tutor/tutorados/${asignacionId}/notas`, 403, tutorId, errRes);
+      return errRes;
+    }
+
+    const nuevaNota: NotaSeguimiento = {
+      id: 'nota-' + Date.now().toString(36),
+      fecha: new Date().toISOString(),
+      tipo,
+      contenido,
+      autorId: tutorId
+    };
+
+    asig.notas.unshift(nuevaNota);
+    this.save();
+
+    const okRes: ApiResponse<NotaSeguimiento> = {
+      success: true,
+      message: 'Nota de seguimiento añadida exitosamente a la bitácora.',
+      data: nuevaNota,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('POST', `/api/tutor/tutorados/${asignacionId}/notas`, 201, tutorId, okRes, {
+      tipo,
+      contenido
+    });
+    return okRes;
+  }
+
+  /**
+   * Búsqueda en catálogo institucional de estudiantes para autocomplete
+   */
+  public buscarEnCatalogo(query: string): EstudianteCatalogo[] {
+    const q = query.toLowerCase().trim();
+    if (!q) return CATALOGO_ESTUDIANTES;
+    return CATALOGO_ESTUDIANTES.filter(
+      e => e.nombre.toLowerCase().includes(q) ||
+           e.email.toLowerCase().includes(q) ||
+           e.matricula.toLowerCase().includes(q)
+    );
+  }
+
+  /**
+   * ENDPOINT VISTA ALUMNO: GET /api/alumno/mi-tutoria
+   * Recupera el tutor asignado, datos curriculares y próximas citas del estudiante en sesión
+   */
+  public async getMiTutoriaComoAlumno(estudianteId: string): Promise<ApiResponse<{
+    asignacion: AsignacionTutorado | null;
+    tutor: Tutor | null;
+    citas: CitaAsesoria[];
+  }>> {
+    const estudiante = CATALOGO_ESTUDIANTES.find(e => e.id === estudianteId);
+    if (!estudiante) {
+      return {
+        success: false,
+        message: 'Estudiante no encontrado en el sistema institucional.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Buscar asignación activa en el ciclo actual (2026-1)
+    const asignacion = this.asignaciones.find(
+      a => a.estudianteId === estudianteId && a.periodoEscolar === '2026-1'
+    ) || this.asignaciones.find(a => a.estudianteId === estudianteId) || null;
+
+    let tutor: Tutor | null = null;
+    if (asignacion) {
+      tutor = TUTORES_DEMO.find(t => t.id === asignacion.tutorId) || null;
+    }
+
+    const citasEstudiante = this.citas.filter(c => c.estudianteId === estudianteId);
+
+    const res = {
+      success: true,
+      message: `Información recuperada para el estudiante ${estudiante.nombre}.`,
+      data: {
+        asignacion,
+        tutor,
+        citas: citasEstudiante
+      },
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('GET', `/api/alumno/mi-tutoria?estudianteId=${estudianteId}`, 200, tutor?.id || 'tutor-001', res);
+    return res;
+  }
+
+  /**
+   * ENDPOINT VISTA ALUMNO: POST /api/alumno/solicitar-cita
+   * Registra una nueva solicitud de asesoría o cita de tutoría
+   */
+  public async solicitarCitaComoAlumno(payload: SolicitarAsesoriaPayload): Promise<ApiResponse<CitaAsesoria>> {
+    if (!payload.tema.trim() || !payload.fecha || !payload.hora) {
+      return {
+        success: false,
+        message: 'Debe especificar el tema, la fecha y la hora para la cita de tutoría.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const nuevaCita: CitaAsesoria = {
+      id: 'cita-' + Date.now().toString(36),
+      estudianteId: payload.estudianteId,
+      tutorId: payload.tutorId,
+      fecha: payload.fecha,
+      hora: payload.hora,
+      tema: payload.tema.trim(),
+      modalidad: payload.modalidad,
+      estado: 'Confirmada',
+      lugar: payload.modalidad === 'Presencial' ? 'Cubículo del Tutor (Confirmado)' : undefined,
+      enlaceVirtual: payload.modalidad === 'Virtual' ? 'https://meet.google.com/tutoria-pro-sesion' : undefined,
+      motivoDetalle: payload.motivoDetalle?.trim()
+    };
+
+    this.citas.unshift(nuevaCita);
+    this.saveCitas();
+
+    const okRes: ApiResponse<CitaAsesoria> = {
+      success: true,
+      message: 'Cita de tutoría agendada con éxito en la agenda institucional.',
+      data: nuevaCita,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('POST', '/api/alumno/solicitar-cita', 201, payload.tutorId, okRes, payload);
+    return okRes;
+  }
+
+  /**
+   * Cancelar cita
+   */
+  public async cancelarCitaComoAlumno(citaId: string): Promise<ApiResponse<{ id: string }>> {
+    const idx = this.citas.findIndex(c => c.id === citaId);
+    if (idx !== -1) {
+      this.citas[idx].estado = 'Cancelada';
+      this.saveCitas();
+    }
+    return {
+      success: true,
+      message: 'Cita cancelada correctamente.',
+      data: { id: citaId },
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Resetear a valores de fábrica para pruebas
+   */
+  public resetToDefault() {
+    this.asignaciones = [...ASIGNACIONES_INICIALES];
+    this.citas = [...CITAS_INICIALES];
+    this.save();
+    this.saveCitas();
+  }
+}
+
+export const tutoriaService = new TutoriaBackendService();

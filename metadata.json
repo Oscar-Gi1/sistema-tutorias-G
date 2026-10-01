@@ -1,0 +1,8 @@
+{
+  "name": "Remix Gestión de Tutorados - Sistema Escolar",
+  "description": "Módulo de gestión y asignación de tutorados para tutores escolares: modelos de datos, arquitectura backend y panel interactivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
