@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { RolUsuario } from '../types/tutoria';
+import { RolUsuario, EstadisticasPersistencia } from '../types/tutoria';
+import { tutoriaService } from '../services/tutoriaService';
 import { AvatarWithFallback } from './AvatarWithFallback';
 import {
   User,
@@ -21,7 +22,12 @@ import {
   Lock,
   Copy,
   Check,
-  ArrowRight
+  ArrowRight,
+  Database,
+  HardDrive,
+  Download,
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 
 interface MiPerfilViewProps {
@@ -45,6 +51,24 @@ export const MiPerfilView: React.FC<MiPerfilViewProps> = ({ onCambioRol }) => {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [copiadoToken, setCopiadoToken] = useState(false);
+
+  // Estadísticas de Persistencia Real (IndexedDB / LocalStorage) - Desarrollador 2
+  const [statsPersistencia, setStatsPersistencia] = useState<EstadisticasPersistencia | null>(null);
+  const [mensajeDb, setMensajeDb] = useState<string | null>(null);
+
+  const cargarStats = async () => {
+    const stats = await tutoriaService.getEstadisticasPersistencia();
+    setStatsPersistencia(stats);
+  };
+
+  useEffect(() => {
+    cargarStats();
+    const unsub = tutoriaService.subscribe(() => {
+      cargarStats();
+    });
+    return () => unsub();
+  }, []);
+
 
   // Filtros de la Base de Usuarios
   const [busquedaUsuario, setBusquedaUsuario] = useState('');
@@ -555,6 +579,137 @@ export const MiPerfilView: React.FC<MiPerfilViewProps> = ({ onCambioRol }) => {
           </table>
         </div>
       </div>
+
+      {/* Panel de Persistencia de Datos y Base de Datos Real (Desarrollador 2) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-[#20B2AA] flex items-center justify-center">
+              <Database className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading font-bold text-base text-slate-900 dark:text-white">
+                  Base de Datos &amp; Persistencia Real
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                  IndexedDB W3C + LocalStorage
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Desarrollador 2: Datos no volátiles. Los usuarios, tutorados, citas, archivos y notas se mantienen al cerrar y reabrir la app.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={async () => {
+                const jsonStr = await tutoriaService.exportarBaseDeDatosJSON();
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `respaldo_sistema_tutorias_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setMensajeDb('Respaldo de base de datos exportado en formato JSON.');
+                setTimeout(() => setMensajeDb(null), 3000);
+              }}
+              className="px-3 py-1.5 bg-[#20B2AA]/10 hover:bg-[#20B2AA] hover:text-white text-[#0E7470] dark:text-[#20B2AA] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Descargar copia íntegra de la base de datos"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Exportar JSON</span>
+            </button>
+
+            <button
+              onClick={async () => {
+                if (confirm('¿Restablecer los datos institucionales de muestra en la base de datos?')) {
+                  await tutoriaService.resetToDefault();
+                  await cargarStats();
+                  setMensajeDb('Datos institucionales restablecidos en la base de datos.');
+                  setTimeout(() => setMensajeDb(null), 3000);
+                }
+              }}
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Restablecer Muestra</span>
+            </button>
+
+            <button
+              onClick={async () => {
+                if (confirm('¿Vaciar todos los datos de prueba y comenzar con almacenamiento completamente limpio?')) {
+                  await tutoriaService.vaciarDatosMock();
+                  await cargarStats();
+                  setMensajeDb('Base de datos vaciada. Listo para operar desde cero.');
+                  setTimeout(() => setMensajeDb(null), 3000);
+                }
+              }}
+              className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Vaciar Mocks</span>
+            </button>
+          </div>
+        </div>
+
+        {mensajeDb && (
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{mensajeDb}</span>
+          </div>
+        )}
+
+        {/* Cuadrícula de Métricas de Almacenamiento */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Usuarios Registrados</span>
+            <span className="font-heading font-bold text-lg text-slate-900 dark:text-white">
+              {statsPersistencia?.totalUsuarios ?? usuariosRegistrados.length}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Tutorados Asignados</span>
+            <span className="font-heading font-bold text-lg text-[#20B2AA]">
+              {statsPersistencia?.totalAsignaciones ?? 0}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Sesiones / Agenda</span>
+            <span className="font-heading font-bold text-lg text-sky-600 dark:text-sky-400">
+              {statsPersistencia?.totalCitas ?? 0}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Archivos &amp; Evidencias</span>
+            <span className="font-heading font-bold text-lg text-indigo-600 dark:text-indigo-400">
+              {statsPersistencia?.totalArchivos ?? 0}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Actividades / Tareas</span>
+            <span className="font-heading font-bold text-lg text-amber-600 dark:text-amber-400">
+              {statsPersistencia?.totalActividades ?? 0}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Notas Personales</span>
+            <span className="font-heading font-bold text-lg text-purple-600 dark:text-purple-400">
+              {statsPersistencia?.totalNotas ?? 0}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
+

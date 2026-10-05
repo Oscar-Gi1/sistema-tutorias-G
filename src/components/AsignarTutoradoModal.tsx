@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Tutor, EstadoTutorado, EstudianteCatalogo } from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
-import { CATALOGO_ESTUDIANTES, ASIGNACIONES_INICIALES } from '../data/mockData';
 import { formatSemestre, getCarreraCorta } from '../utils/tutoriaUtils';
 import { AvatarWithFallback } from './AvatarWithFallback';
 import {
@@ -25,6 +24,7 @@ interface AsignarTutoradoModalProps {
   isOpen: boolean;
   onClose: () => void;
   tutorActivo: Tutor;
+  catalogoEstudiantes?: EstudianteCatalogo[];
   onAsignacionExitosa: () => void;
 }
 
@@ -34,6 +34,7 @@ export const AsignarTutoradoModal: React.FC<AsignarTutoradoModalProps> = ({
   isOpen,
   onClose,
   tutorActivo,
+  catalogoEstudiantes: propCatalogo,
   onAsignacionExitosa
 }) => {
   const [identificador, setIdentificador] = useState('');
@@ -44,6 +45,18 @@ export const AsignarTutoradoModal: React.FC<AsignarTutoradoModalProps> = ({
   const [cargando, setCargando] = useState(false);
   const [mensajeErrorServidor, setMensajeErrorServidor] = useState<string | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [catalogoLocal, setCatalogoLocal] = useState<EstudianteCatalogo[]>([]);
+
+  useEffect(() => {
+    if (propCatalogo && propCatalogo.length > 0) {
+      setCatalogoLocal(propCatalogo);
+    } else {
+      tutoriaService.getCatalogoEstudiantes().then(res => setCatalogoLocal(res));
+    }
+  }, [propCatalogo, isOpen]);
+
+  const catalogoDisponible = propCatalogo && propCatalogo.length > 0 ? propCatalogo : catalogoLocal;
+
 
   // Escuchar tecla Escape
   useEffect(() => {
@@ -71,21 +84,22 @@ export const AsignarTutoradoModal: React.FC<AsignarTutoradoModalProps> = ({
   const estudianteEncontrado = useMemo<EstudianteCatalogo | null>(() => {
     const term = identificador.trim().toLowerCase();
     if (!term) return null;
-    return CATALOGO_ESTUDIANTES.find(
+    return catalogoDisponible.find(
       e => e.email.toLowerCase() === term || e.matricula.toLowerCase() === term
     ) || null;
-  }, [identificador]);
+  }, [identificador, catalogoDisponible]);
 
   // Sugerencias de autocompletado en tiempo real
   const sugerencias = useMemo<EstudianteCatalogo[]>(() => {
     const query = identificador.trim().toLowerCase();
     if (query.length < 2) return [];
-    return CATALOGO_ESTUDIANTES.filter(e =>
+    return catalogoDisponible.filter(e =>
       e.nombre.toLowerCase().includes(query) ||
       e.email.toLowerCase().includes(query) ||
       e.matricula.toLowerCase().includes(query)
     ).slice(0, 4);
-  }, [identificador]);
+  }, [identificador, catalogoDisponible]);
+
 
   // Validación interactiva en tiempo real del campo Identificador
   const validacion = useMemo<{ status: ValidationStatus; mensaje?: string }>(() => {

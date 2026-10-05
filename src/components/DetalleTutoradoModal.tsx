@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AsignacionTutorado, EstadoTutorado, NotaSeguimiento, Tutor } from '../types/tutoria';
+import { AsignacionTutorado, EstadoTutorado, NotaSeguimiento, Tutor, ArchivoSistema } from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
 import { formatSemestre, getCarreraCorta, getEstadoConfig } from '../utils/tutoriaUtils';
 import { AvatarWithFallback } from './AvatarWithFallback';
@@ -16,7 +16,9 @@ import {
   CheckCircle,
   Hash,
   Award,
-  GraduationCap
+  GraduationCap,
+  Download,
+  FolderOpen
 } from 'lucide-react';
 
 interface DetalleTutoradoModalProps {
@@ -38,12 +40,21 @@ export const DetalleTutoradoModal: React.FC<DetalleTutoradoModalProps> = ({
   const [cargando, setCargando] = useState(false);
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
+  const [archivosAlumno, setArchivosAlumno] = useState<ArchivoSistema[]>([]);
+
+  const cargarArchivos = async () => {
+    if (asignacion) {
+      const res = await tutoriaService.getArchivos({ tutoradoId: asignacion.estudianteId });
+      if (res.data) setArchivosAlumno(res.data);
+    }
+  };
 
   useEffect(() => {
     if (asignacion) {
       setNuevoEstado(asignacion.estado);
       setConfirmarEliminar(false);
       setMensaje(null);
+      cargarArchivos();
     }
   }, [asignacion]);
 

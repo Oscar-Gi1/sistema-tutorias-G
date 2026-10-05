@@ -67,6 +67,8 @@ export const Header: React.FC<HeaderProps> = ({
         return rolActivo === 'TUTOR' ? 'Tutorados / Alumnos' : 'Mi Tutoría Asignada';
       case 'calendario':
         return 'Calendario y Sesiones';
+      case 'archivos':
+        return rolActivo === 'TUTOR' ? 'Documentos y Tareas' : 'Mis Evidencias y Tareas';
       case 'notas':
         return 'Mis Notas Personales';
       case 'perfil':
@@ -85,6 +87,10 @@ export const Header: React.FC<HeaderProps> = ({
           : 'Información institucional de tu acompañamiento y bitácora escolar';
       case 'calendario':
         return 'Agenda institucional de sesiones presenciales y virtuales';
+      case 'archivos':
+        return rolActivo === 'TUTOR'
+          ? 'Materiales institucionales, asignación de actividades y revisión de evidencias'
+          : 'Entrega de evidencias de acompañamiento y descarga de guías del tutor';
       case 'notas':
         return 'Espacio privado para gestionar tus apuntes, dudas y recordatorios';
       case 'perfil':

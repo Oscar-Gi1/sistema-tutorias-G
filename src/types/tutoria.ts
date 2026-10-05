@@ -159,6 +159,77 @@ export interface ApiResponse<T = any> {
   timestamp: string;
 }
 
+export type EstadoRevisionArchivo = 'Pendiente' | 'Aprobado' | 'En Revisión' | 'Requiere Corrección';
+export type CategoriaArchivo = 'Evidencia' | 'Material de Apoyo' | 'Tarea / Actividad' | 'Documento Institucional';
+
+export interface ArchivoSistema {
+  id: string;
+  nombre: string;
+  tipo: string;
+  tamano: number;
+  tamanoFormateado: string;
+  fechaSubida: string;
+  autorId: string;
+  autorNombre: string;
+  autorRol: 'TUTOR' | 'TUTORADO';
+  tutoradoId?: string; // Estudiante al que corresponde
+  tutorId?: string;    // Tutor al que corresponde
+  actividadId?: string;// Tarea asociada opcional
+  categoria: CategoriaArchivo;
+  descripcion?: string;
+  contenidoDataUrl: string; // Base64 Data URL para persistencia y descarga
+  estadoRevision: EstadoRevisionArchivo;
+  comentarioTutor?: string;
+  fechaRevision?: string;
+}
+
+export interface SubirArchivoPayload {
+  nombre: string;
+  tipo: string;
+  tamano: number;
+  contenidoDataUrl: string;
+  categoria: CategoriaArchivo;
+  descripcion?: string;
+  tutoradoId?: string;
+  tutorId?: string;
+  actividadId?: string;
+}
+
+export interface RevisarArchivoPayload {
+  archivoId: string;
+  estadoRevision: EstadoRevisionArchivo;
+  comentarioTutor: string;
+}
+
+export interface ActividadAsignada {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  fechaLimite: string;
+  tutorId: string;
+  tutorNombre: string;
+  estudianteId?: string; // 'TODOS' o id del estudiante específico
+  estado: 'Pendiente' | 'Entregada' | 'Revisada';
+  archivoAdjunto?: {
+    nombre: string;
+    dataUrl: string;
+    tamano: string;
+  };
+  fechaCreacion: string;
+}
+
+export interface CrearActividadPayload {
+  titulo: string;
+  descripcion: string;
+  fechaLimite: string;
+  estudianteId?: string;
+  archivoAdjunto?: {
+    nombre: string;
+    dataUrl: string;
+    tamano: string;
+  };
+}
+
 export interface BackendGuardSpec {
   endpoint: string;
   metodo: 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -166,3 +237,26 @@ export interface BackendGuardSpec {
   reglaAislamiento: string;
   codigoErrorSiFalla: 401 | 403 | 404;
 }
+
+export interface NotaPersonalItem {
+  id: string | number;
+  alumnoId?: string;
+  categoria: 'Duda de Asesoría' | 'Recordatorio' | 'Trámite / Beca' | 'General';
+  texto: string;
+  fecha: string;
+}
+
+export interface EstadisticasPersistencia {
+  totalUsuarios: number;
+  totalTutores: number;
+  totalEstudiantes: number;
+  totalAsignaciones: number;
+  totalCitas: number;
+  totalArchivos: number;
+  totalActividades: number;
+  totalNotas: number;
+  motor: 'IndexedDB (W3C) + LocalStorage';
+  estado: 'Sincronizado y Persistente';
+}
+
+

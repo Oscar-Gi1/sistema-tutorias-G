@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { TUTORES_DEMO, CATALOGO_ESTUDIANTES } from './data/mockData';
-import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado, RolUsuario } from './types/tutoria';
+import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado, RolUsuario, CitaAsesoria } from './types/tutoria';
 import { tutoriaService } from './services/tutoriaService';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MiPerfilView } from './components/MiPerfilView';
+import { ArchivosEvidenciasView } from './components/ArchivosEvidenciasView';
 import { Sidebar, SeccionNavegacion } from './components/Sidebar';
 import { Header } from './components/Header';
 import { TutoradosDashboard } from './components/TutoradosDashboard';
@@ -36,6 +37,8 @@ import {
 function AppContent() {
   const { sesion, logout, cambiarPerfilDemo } = useAuth();
   const [rolActivo, setRolActivo] = useState<RolSimulado>('TUTOR');
+  const [tutores, setTutores] = useState<Tutor[]>(TUTORES_DEMO);
+  const [catalogoEstudiantes, setCatalogoEstudiantes] = useState<EstudianteCatalogo[]>(CATALOGO_ESTUDIANTES);
   const [tutorActivo, setTutorActivo] = useState<Tutor>(TUTORES_DEMO[0]);
   const [estudianteActivo, setEstudianteActivo] = useState<EstudianteCatalogo>(CATALOGO_ESTUDIANTES[0]);
   const [seccionActiva, setSeccionActiva] = useState<SeccionNavegacion>('dashboard');
@@ -44,6 +47,8 @@ function AppContent() {
   const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
   const [tutoradoSeleccionado, setTutoradoSeleccionado] = useState<AsignacionTutorado | null>(null);
   const [tutorados, setTutorados] = useState<AsignacionTutorado[]>([]);
+  const [citas, setCitas] = useState<CitaAsesoria[]>([]);
+
 
   // Sincronizar el rol activo y perfil (Tutor o Alumno) con la sesión JWT autenticada
   useEffect(() => {
@@ -119,6 +124,17 @@ function AppContent() {
     if (res.success && res.data) {
       setTutorados(res.data);
     }
+
+    const resCitas = await tutoriaService.getMiTutoriaComoAlumno(estudianteActivo.id);
+    if (resCitas.data?.citas) {
+      setCitas(resCitas.data.citas);
+    }
+
+    const tuts = await tutoriaService.getCatalogoTutores();
+    if (tuts.length > 0) setTutores(tuts);
+
+    const ests = await tutoriaService.getCatalogoEstudiantes();
+    if (ests.length > 0) setCatalogoEstudiantes(ests);
   };
 
   useEffect(() => {
@@ -127,7 +143,7 @@ function AppContent() {
       cargarDatos();
     });
     return () => unsub();
-  }, [tutorActivo.id]);
+  }, [tutorActivo.id, estudianteActivo.id]);
 
   const total = tutorados.length;
   const enRiesgo = tutorados.filter(t => t.estado === 'EN_RIESGO' || t.estado === 'CONDICIONADO');
@@ -136,45 +152,25 @@ function AppContent() {
     : '0.0';
   const totalNotas = tutorados.reduce((acc, curr) => acc + (curr.notas?.length || 0), 0);
 
-  // Sesiones agendadas en formato de lista pequeña para el Dashboard
-  const proximasSesionesResumen = [
-    {
-      id: 'ses-1',
-      hora: '11:00 AM',
-      fecha: 'Hoy, 15 Oct',
-      alumno: 'Carlos Eduardo Peña',
-      carrera: 'Ing. en Sistemas',
-      semestre: 3,
-      modalidad: 'Presencial',
-      cubículo: tutorActivo.cubículo,
-      urgente: true,
-      tema: 'Plan de Regularización Académica Preventiva'
-    },
-    {
-      id: 'ses-2',
-      hora: '04:00 PM',
-      fecha: 'Mañana, 16 Oct',
-      alumno: 'Mariana Silva Robledo',
-      carrera: 'Ing. en Software',
-      semestre: 5,
-      modalidad: 'Virtual',
-      cubículo: 'Google Meet',
-      urgente: false,
-      tema: 'Revisión y Validación de Proyecto Terminal'
-    },
-    {
-      id: 'ses-3',
-      hora: '09:30 AM',
-      fecha: 'Vie, 17 Oct',
-      alumno: 'Jorge Ramos Morales',
-      carrera: 'Tecnologías de Información',
-      semestre: 4,
-      modalidad: 'Presencial',
-      cubículo: tutorActivo.cubículo,
-      urgente: false,
-      tema: 'Asesoría para Trámite de Beca Institucional'
-    }
-  ];
+  // Sesiones agendadas dinámicamente desde la base de datos persistente
+  const proximasSesionesResumen = citas.length > 0
+    ? citas.slice(0, 3).map((cita, idx) => {
+        const alumno = catalogoEstudiantes.find(e => e.id === cita.estudianteId) || estudianteActivo;
+        return {
+          id: cita.id || `ses-${idx}`,
+          hora: cita.hora,
+          fecha: cita.fecha,
+          alumno: alumno.nombre,
+          carrera: alumno.carrera,
+          semestre: alumno.semestre,
+          modalidad: cita.modalidad,
+          cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : (cita.lugar || tutorActivo.cubículo),
+          urgente: cita.estado === 'Pendiente',
+          tema: cita.tema
+        };
+      })
+    : [];
+
 
   return (
     <ProtectedRoute
@@ -192,8 +188,8 @@ function AppContent() {
           estudianteActivo={estudianteActivo}
           onCambiarTutor={handleCambiarTutorConSesion}
           onCambiarEstudiante={handleCambiarEstudianteConSesion}
-          catalogoTutores={TUTORES_DEMO}
-          catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+          catalogoTutores={tutores}
+          catalogoEstudiantes={catalogoEstudiantes}
           seccionActiva={seccionActiva}
           onCambiarSeccion={setSeccionActiva}
           conteoTutorados={total}
@@ -217,8 +213,8 @@ function AppContent() {
             tutorActivo={tutorActivo}
             estudianteActivo={estudianteActivo}
             seccionActiva={seccionActiva}
-            catalogoTutores={TUTORES_DEMO}
-            catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+            catalogoTutores={tutores}
+            catalogoEstudiantes={catalogoEstudiantes}
             onCambiarTutor={handleCambiarTutorConSesion}
             onCambiarEstudiante={handleCambiarEstudianteConSesion}
             onIrPerfil={() => setSeccionActiva('perfil')}
@@ -238,7 +234,18 @@ function AppContent() {
               />
             )}
 
-            {seccionActiva !== 'perfil' && rolActivo === 'TUTOR' && (
+            {/* VISTA TRANSVERSAL: DOCUMENTOS, EVIDENCIAS Y TAREAS */}
+            {seccionActiva === 'archivos' && (
+              <ArchivosEvidenciasView
+                rolActivo={rolActivo}
+                tutorActivo={tutorActivo}
+                estudianteActivo={estudianteActivo}
+                catalogoEstudiantes={catalogoEstudiantes}
+              />
+            )}
+
+
+            {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'TUTOR' && (
             <>
               {/* =================================================== */}
               {/* VISTA 1: INICIO / DASHBOARD (dashboard.component.html)*/}
@@ -434,7 +441,7 @@ function AppContent() {
                 <div className="space-y-6 animate-in fade-in duration-200">
                   {/* Cuadrícula Completa del Calendario Visual de Sesiones */}
                   <VisualCalendarWidget
-                    citas={[]}
+                    citas={citas}
                     onNuevaSesion={() => {}}
                   />
 
@@ -443,7 +450,7 @@ function AppContent() {
                     rolActivo="TUTOR"
                     tutorActivo={tutorActivo}
                     estudianteActivo={estudianteActivo}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -470,7 +477,7 @@ function AppContent() {
           {/* ======================================================== */}
           {/* VISTAS PARA EL ROL DE ALUMNO                             */}
           {/* ======================================================== */}
-          {seccionActiva !== 'perfil' && rolActivo === 'ALUMNO' && (
+          {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'ALUMNO' && (
             <>
               {/* 1. Inicio / Dashboard o Mi Tutoría */}
               {(seccionActiva === 'dashboard' || seccionActiva === 'tutorados') && (
@@ -478,7 +485,7 @@ function AppContent() {
                   <AlumnoPortalView
                     estudianteActivo={estudianteActivo}
                     onCambiarEstudiante={handleCambiarEstudianteConSesion}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -487,7 +494,7 @@ function AppContent() {
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   <VisualCalendarWidget
-                    citas={[]}
+                    citas={citas}
                     onNuevaSesion={() => {}}
                   />
 
@@ -495,7 +502,7 @@ function AppContent() {
                     rolActivo="ALUMNO"
                     tutorActivo={tutorActivo}
                     estudianteActivo={estudianteActivo}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -534,8 +541,10 @@ function AppContent() {
         isOpen={modalAsignarAbierto}
         onClose={() => setModalAsignarAbierto(false)}
         tutorActivo={tutorActivo}
+        catalogoEstudiantes={catalogoEstudiantes}
         onAsignacionExitosa={cargarDatos}
       />
+
 
       <DetalleTutoradoModal
         asignacion={tutoradoSeleccionado}

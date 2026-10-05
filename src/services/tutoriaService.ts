@@ -1,8 +1,97 @@
-import { AsignacionTutorado, AsignarTutoradoPayload, ApiResponse, EstadoTutorado, NotaSeguimiento, EstudianteCatalogo, CitaAsesoria, SolicitarAsesoriaPayload, Tutor } from '../types/tutoria';
+import {
+  AsignacionTutorado,
+  AsignarTutoradoPayload,
+  ApiResponse,
+  EstadoTutorado,
+  NotaSeguimiento,
+  EstudianteCatalogo,
+  CitaAsesoria,
+  SolicitarAsesoriaPayload,
+  Tutor,
+  ArchivoSistema,
+  SubirArchivoPayload,
+  RevisarArchivoPayload,
+  ActividadAsignada,
+  CrearActividadPayload,
+  NotaPersonalItem,
+  EstadisticasPersistencia
+} from '../types/tutoria';
 import { ASIGNACIONES_INICIALES, CATALOGO_ESTUDIANTES, TUTORES_DEMO } from '../data/mockData';
+import { dbStorage } from './dbStorage';
 
-const STORAGE_KEY = 'sistema_tutorias_asignaciones_v1';
-const CITAS_STORAGE_KEY = 'sistema_tutorias_citas_v1';
+const STORAGE_KEY = 'sistema_tutorias_asignaciones_v2';
+const CITAS_STORAGE_KEY = 'sistema_tutorias_citas_v2';
+const ARCHIVOS_STORAGE_KEY = 'sistema_tutorias_archivos_v2';
+const ACTIVIDADES_STORAGE_KEY = 'sistema_tutorias_actividades_v2';
+const NOTAS_STORAGE_KEY = 'sistema_tutorias_notas_personales_v2';
+
+export const ARCHIVOS_INICIALES: ArchivoSistema[] = [
+  {
+    id: 'arch-001',
+    nombre: 'Guia_Institucional_Tutorias_2026.pdf',
+    tipo: 'application/pdf',
+    tamano: 1845000,
+    tamanoFormateado: '1.8 MB',
+    fechaSubida: '2026-10-01T10:00:00.000Z',
+    autorId: 'tutor-001',
+    autorNombre: 'Dr. Roberto Mendoza Salinas',
+    autorRol: 'TUTOR',
+    tutorId: 'tutor-001',
+    categoria: 'Material de Apoyo',
+    descripcion: 'Manual de lineamientos, formatos de sesión y fechas clave de tutoría escolar.',
+    contenidoDataUrl: 'data:application/pdf;base64,JVBERi0xLjQKJeLjz9MKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA2MTIgNzkyXS9QYXJlbnQgMiAwIFI+PmVuZG9iagp4cmVmCjAgNAowMDAwMDAwMDAwIDY1NTM1IGYKMDAwMDAwMDAxOCAwMDAwMCBuCjAwMDAwMDAwNjYAwMDAwIG4KMDAwMDAwMDExNSAwMDAwMCBuCnRyYWlsZXIKPDwvU2l6ZSA0L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMTc1CiUlRU9G',
+    estadoRevision: 'Aprobado'
+  },
+  {
+    id: 'arch-002',
+    nombre: 'Reporte_Avance_Titulacion_AnaMorales.pdf',
+    tipo: 'application/pdf',
+    tamano: 842000,
+    tamanoFormateado: '842 KB',
+    fechaSubida: '2026-10-02T14:30:00.000Z',
+    autorId: 'est-101',
+    autorNombre: 'Ana Lucía Morales Rivera',
+    autorRol: 'TUTORADO',
+    tutoradoId: 'est-101',
+    tutorId: 'tutor-001',
+    categoria: 'Evidencia',
+    descripcion: 'Borrador del marco teórico y propuesta metodológica del proyecto de grado.',
+    contenidoDataUrl: 'data:application/pdf;base64,JVBERi0xLjQKJeLjz9MKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA2MTIgNzkyXS9QYXJlbnQgMiAwIFI+PmVuZG9iagp4cmVmCjAgNAowMDAwMDAwMDAwIDY1NTM1IGYKMDAwMDAwMDAxOCAwMDAwMCBuCjAwMDAwMDAwNjYAwMDAwIG4KMDAwMDAwMDExNSAwMDAwMCBuCnRyYWlsZXIKPDwvU2l6ZSA0L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMTc1CiUlRU9G',
+    estadoRevision: 'Aprobado',
+    comentarioTutor: 'Excelente avance. La fundamentación es sólida y los objetivos están claros.',
+    fechaRevision: '2026-10-03T09:15:00.000Z'
+  }
+];
+
+export const ACTIVIDADES_INICIALES: ActividadAsignada[] = [
+  {
+    id: 'act-001',
+    titulo: 'Entrega de Formato de Diagnóstico Inicial y Kardex',
+    descripcion: 'Descargar el formato institucional, llenarlo con las materias aprobadas/reprobadas y subir el PDF firmado.',
+    fechaLimite: '2026-10-25',
+    tutorId: 'tutor-001',
+    tutorNombre: 'Dr. Roberto Mendoza Salinas',
+    estudianteId: 'TODOS',
+    estado: 'Pendiente',
+    archivoAdjunto: {
+      nombre: 'Plantilla_Diagnostico_2026.docx',
+      dataUrl: 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,UEsDBBQAAAA...',
+      tamano: '145 KB'
+    },
+    fechaCreacion: '2026-10-01T08:00:00.000Z'
+  },
+  {
+    id: 'act-002',
+    titulo: 'Plan de Regularización en Cálculo Vectorial',
+    descripcion: 'Presentar el horario de estudio y calendario de asesorías para el examen extraordinario.',
+    fechaLimite: '2026-10-20',
+    tutorId: 'tutor-001',
+    tutorNombre: 'Dr. Roberto Mendoza Salinas',
+    estudianteId: 'est-102', // Diego Alejandro
+    estado: 'Pendiente',
+    fechaCreacion: '2026-10-02T11:00:00.000Z'
+  }
+];
 
 export const CITAS_INICIALES: CitaAsesoria[] = [
   {
@@ -58,11 +147,15 @@ export interface HttpLogEntry {
 class TutoriaBackendService {
   private asignaciones: AsignacionTutorado[] = [];
   private citas: CitaAsesoria[] = [];
+  private archivos: ArchivoSistema[] = [];
+  private actividades: ActividadAsignada[] = [];
+  private notas: NotaPersonalItem[] = [];
   private httpLogs: HttpLogEntry[] = [];
   private listeners: Array<() => void> = [];
 
   constructor() {
     this.initData();
+    this.syncFromIndexedDB();
   }
 
   private initData() {
@@ -82,21 +175,131 @@ class TutoriaBackendService {
         this.citas = [...CITAS_INICIALES];
         this.saveCitas();
       }
+
+      const storedArchivos = localStorage.getItem(ARCHIVOS_STORAGE_KEY);
+      if (storedArchivos) {
+        this.archivos = JSON.parse(storedArchivos);
+      } else {
+        this.archivos = [...ARCHIVOS_INICIALES];
+        this.saveArchivos();
+      }
+
+      const storedActividades = localStorage.getItem(ACTIVIDADES_STORAGE_KEY);
+      if (storedActividades) {
+        this.actividades = JSON.parse(storedActividades);
+      } else {
+        this.actividades = [...ACTIVIDADES_INICIALES];
+        this.saveActividades();
+      }
+
+      const storedNotas = localStorage.getItem(NOTAS_STORAGE_KEY);
+      if (storedNotas) {
+        this.notas = JSON.parse(storedNotas);
+      } else {
+        this.notas = [];
+      }
     } catch {
       this.asignaciones = [...ASIGNACIONES_INICIALES];
       this.citas = [...CITAS_INICIALES];
+      this.archivos = [...ARCHIVOS_INICIALES];
+      this.actividades = [...ACTIVIDADES_INICIALES];
+      this.notas = [];
+    }
+  }
+
+  /**
+   * Sincroniza en segundo plano con la base de datos IndexedDB
+   */
+  private async syncFromIndexedDB() {
+    try {
+      const dbAsignaciones = await dbStorage.getAll<AsignacionTutorado>('asignaciones');
+      if (dbAsignaciones.length > 0) {
+        this.asignaciones = dbAsignaciones;
+      } else if (this.asignaciones.length > 0) {
+        await dbStorage.putMany('asignaciones', this.asignaciones);
+      }
+
+      const dbCitas = await dbStorage.getAll<CitaAsesoria>('citas');
+      if (dbCitas.length > 0) {
+        this.citas = dbCitas;
+      } else if (this.citas.length > 0) {
+        await dbStorage.putMany('citas', this.citas);
+      }
+
+      const dbArchivos = await dbStorage.getAll<ArchivoSistema>('archivos');
+      if (dbArchivos.length > 0) {
+        this.archivos = dbArchivos;
+      } else if (this.archivos.length > 0) {
+        await dbStorage.putMany('archivos', this.archivos);
+      }
+
+      const dbActividades = await dbStorage.getAll<ActividadAsignada>('actividades');
+      if (dbActividades.length > 0) {
+        this.actividades = dbActividades;
+      } else if (this.actividades.length > 0) {
+        await dbStorage.putMany('actividades', this.actividades);
+      }
+
+      const dbNotas = await dbStorage.getAll<NotaPersonalItem>('notas');
+      if (dbNotas.length > 0) {
+        this.notas = dbNotas;
+      }
+
+      this.notify();
+    } catch (err) {
+      console.warn('Sincronización IndexedDB:', err);
     }
   }
 
   private save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.asignaciones));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.asignaciones));
+    } catch {}
+    dbStorage.putMany('asignaciones', this.asignaciones).catch(() => {});
     this.notify();
   }
 
   private saveCitas() {
-    localStorage.setItem(CITAS_STORAGE_KEY, JSON.stringify(this.citas));
+    try {
+      localStorage.setItem(CITAS_STORAGE_KEY, JSON.stringify(this.citas));
+    } catch {}
+    dbStorage.putMany('citas', this.citas).catch(() => {});
     this.notify();
   }
+
+  private saveArchivos() {
+    // Para localStorage guardamos versión ligera si es muy pesado
+    try {
+      const ligero = this.archivos.map(a => {
+        if (a.contenidoDataUrl && a.contenidoDataUrl.length > 50000) {
+          return { ...a, contenidoDataUrl: '[ALMACENADO_EN_INDEXEDDB]' };
+        }
+        return a;
+      });
+      localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(ligero));
+    } catch {}
+    // IndexedDB almacena el contenido completo binario / DataUrl de forma persistente
+    dbStorage.putMany('archivos', this.archivos).catch(() => {});
+    this.notify();
+  }
+
+  private saveActividades() {
+    try {
+      localStorage.setItem(ACTIVIDADES_STORAGE_KEY, JSON.stringify(this.actividades));
+    } catch {}
+    dbStorage.putMany('actividades', this.actividades).catch(() => {});
+    this.notify();
+  }
+
+  private saveNotas() {
+    try {
+      localStorage.setItem(NOTAS_STORAGE_KEY, JSON.stringify(this.notas));
+    } catch {}
+    dbStorage.putMany('notas', this.notas).catch(() => {});
+    this.notify();
+  }
+
+
 
   public subscribe(cb: () => void) {
     this.listeners.push(cb);
@@ -603,14 +806,519 @@ class TutoriaBackendService {
   }
 
   /**
+   * ENDPOINT: GET /api/archivos
+   * Recupera archivos filtrados por tutorado, tutor o categoría
+   */
+  public async getArchivos(filtros?: {
+    tutoradoId?: string;
+    tutorId?: string;
+    categoria?: string;
+    rol?: string;
+  }): Promise<ApiResponse<ArchivoSistema[]>> {
+    let res = [...this.archivos];
+
+    if (filtros?.tutoradoId && filtros.tutoradoId !== 'TODOS') {
+      res = res.filter(a => a.tutoradoId === filtros.tutoradoId || a.categoria === 'Material de Apoyo');
+    }
+
+    if (filtros?.tutorId && filtros.tutorId !== 'TODOS') {
+      res = res.filter(a => a.tutorId === filtros.tutorId || !a.tutorId);
+    }
+
+    if (filtros?.categoria && filtros.categoria !== 'TODAS') {
+      res = res.filter(a => a.categoria === filtros.categoria);
+    }
+
+    if (filtros?.rol && filtros.rol !== 'TODOS') {
+      res = res.filter(a => a.autorRol === filtros.rol);
+    }
+
+    // Ordenar de más reciente a más antiguo
+    res.sort((a, b) => new Date(b.fechaSubida).getTime() - new Date(a.fechaSubida).getTime());
+
+    return {
+      success: true,
+      message: `Se recuperaron ${res.length} archivos.`,
+      data: res,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: POST /api/archivos/subir
+   * Subida persistente de archivos (Evidencias de Tutorado o Material del Tutor)
+   */
+  public async subirArchivo(
+    payload: SubirArchivoPayload,
+    autor: { id: string; nombre: string; rol: 'TUTOR' | 'TUTORADO' }
+  ): Promise<ApiResponse<ArchivoSistema>> {
+    if (!payload.nombre || !payload.contenidoDataUrl) {
+      return {
+        success: false,
+        message: 'Debe proporcionar un archivo válido con nombre y contenido.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const formatBytes = (bytes: number): string => {
+      if (bytes < 1024) return bytes + ' B';
+      const k = 1024;
+      const dm = 1;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    };
+
+    const nuevoArchivo: ArchivoSistema = {
+      id: 'arch-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 5),
+      nombre: payload.nombre,
+      tipo: payload.tipo || 'application/octet-stream',
+      tamano: payload.tamano || 0,
+      tamanoFormateado: formatBytes(payload.tamano || 0),
+      fechaSubida: new Date().toISOString(),
+      autorId: autor.id,
+      autorNombre: autor.nombre,
+      autorRol: autor.rol,
+      tutoradoId: payload.tutoradoId,
+      tutorId: payload.tutorId,
+      actividadId: payload.actividadId,
+      categoria: payload.categoria || (autor.rol === 'TUTOR' ? 'Material de Apoyo' : 'Evidencia'),
+      descripcion: payload.descripcion?.trim(),
+      contenidoDataUrl: payload.contenidoDataUrl,
+      estadoRevision: 'Pendiente'
+    };
+
+    this.archivos.unshift(nuevoArchivo);
+    this.saveArchivos();
+
+    const okRes: ApiResponse<ArchivoSistema> = {
+      success: true,
+      message: `Archivo "${nuevoArchivo.nombre}" subido exitosamente y almacenado de forma persistente.`,
+      data: nuevoArchivo,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('POST', '/api/archivos/subir', 201, autor.id, okRes, {
+      nombre: payload.nombre,
+      categoria: payload.categoria
+    });
+
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: PATCH /api/archivos/:id/revisar
+   * Permite al Tutor marcar como revisado y agregar comentarios / retroalimentación
+   */
+  public async revisarArchivo(
+    payload: RevisarArchivoPayload,
+    tutorId: string
+  ): Promise<ApiResponse<ArchivoSistema>> {
+    const idx = this.archivos.findIndex(a => a.id === payload.archivoId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Archivo no encontrado.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    this.archivos[idx].estadoRevision = payload.estadoRevision;
+    this.archivos[idx].comentarioTutor = payload.comentarioTutor?.trim();
+    this.archivos[idx].fechaRevision = new Date().toISOString();
+    this.saveArchivos();
+
+    const okRes: ApiResponse<ArchivoSistema> = {
+      success: true,
+      message: `Revisión guardada con estado: ${payload.estadoRevision}.`,
+      data: this.archivos[idx],
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('PATCH', `/api/archivos/${payload.archivoId}/revisar`, 200, tutorId, okRes, payload);
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: DELETE /api/archivos/:id
+   */
+  public async eliminarArchivo(archivoId: string): Promise<ApiResponse<{ id: string }>> {
+    const idx = this.archivos.findIndex(a => a.id === archivoId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Archivo no encontrado.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    this.archivos.splice(idx, 1);
+    this.saveArchivos();
+
+    return {
+      success: true,
+      message: 'Archivo eliminado correctamente del almacenamiento persistente.',
+      data: { id: archivoId },
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: GET /api/actividades
+   * Listar actividades asignadas
+   */
+  public async getActividades(filtros?: {
+    estudianteId?: string;
+    tutorId?: string;
+  }): Promise<ApiResponse<ActividadAsignada[]>> {
+    let res = [...this.actividades];
+
+    if (filtros?.estudianteId && filtros.estudianteId !== 'TODOS') {
+      res = res.filter(a => a.estudianteId === 'TODOS' || a.estudianteId === filtros.estudianteId);
+    }
+
+    if (filtros?.tutorId && filtros.tutorId !== 'TODOS') {
+      res = res.filter(a => a.tutorId === filtros.tutorId);
+    }
+
+    res.sort((a, b) => new Date(b.fechaCreacion).getTime() - new Date(a.fechaCreacion).getTime());
+
+    return {
+      success: true,
+      message: `Se recuperaron ${res.length} actividades.`,
+      data: res,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: POST /api/actividades/crear
+   * Permite al Tutor crear y asignar una nueva actividad con archivos adjuntos
+   */
+  public async crearActividad(
+    payload: CrearActividadPayload,
+    tutor: { id: string; nombre: string }
+  ): Promise<ApiResponse<ActividadAsignada>> {
+    if (!payload.titulo.trim() || !payload.fechaLimite) {
+      return {
+        success: false,
+        message: 'Debe ingresar el título de la actividad y la fecha límite de entrega.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const nuevaActividad: ActividadAsignada = {
+      id: 'act-' + Date.now().toString(36),
+      titulo: payload.titulo.trim(),
+      descripcion: payload.descripcion.trim(),
+      fechaLimite: payload.fechaLimite,
+      tutorId: tutor.id,
+      tutorNombre: tutor.nombre,
+      estudianteId: payload.estudianteId || 'TODOS',
+      estado: 'Pendiente',
+      archivoAdjunto: payload.archivoAdjunto,
+      fechaCreacion: new Date().toISOString()
+    };
+
+    this.actividades.unshift(nuevaActividad);
+    this.saveActividades();
+
+    const okRes: ApiResponse<ActividadAsignada> = {
+      success: true,
+      message: `Actividad "${nuevaActividad.titulo}" asignada exitosamente.`,
+      data: nuevaActividad,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('POST', '/api/actividades/crear', 201, tutor.id, okRes, payload);
+    return okRes;
+  }
+
+  /**
+   * ENDPOINT: PATCH /api/actividades/:id/estado
+   */
+  public async actualizarEstadoActividad(
+    actividadId: string,
+    estado: 'Pendiente' | 'Entregada' | 'Revisada'
+  ): Promise<ApiResponse<ActividadAsignada>> {
+    const idx = this.actividades.findIndex(a => a.id === actividadId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Actividad no encontrada.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    this.actividades[idx].estado = estado;
+    this.saveActividades();
+
+    return {
+      success: true,
+      message: `Estado de la actividad actualizado a ${estado}.`,
+      data: this.actividades[idx],
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: GET /api/notas-personales
+   * Recupera notas personales del alumno (persistidas en base de datos)
+   */
+  public async getNotasPersonales(alumnoId?: string): Promise<ApiResponse<NotaPersonalItem[]>> {
+    let res = [...this.notas];
+    if (alumnoId) {
+      res = res.filter(n => !n.alumnoId || n.alumnoId === alumnoId);
+    }
+    return {
+      success: true,
+      message: `Se recuperaron ${res.length} notas personales.`,
+      data: res,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: POST /api/notas-personales
+   * Guarda o actualiza una nota personal de forma persistente
+   */
+  public async guardarNotaPersonal(
+    payload: Omit<NotaPersonalItem, 'id' | 'fecha'> & { id?: string | number }
+  ): Promise<ApiResponse<NotaPersonalItem>> {
+    const ahora = new Date().toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    let notaGuardada: NotaPersonalItem;
+    if (payload.id) {
+      const idx = this.notas.findIndex(n => n.id === payload.id);
+      if (idx >= 0) {
+        this.notas[idx] = {
+          ...this.notas[idx],
+          texto: payload.texto,
+          categoria: payload.categoria,
+          alumnoId: payload.alumnoId
+        };
+        notaGuardada = this.notas[idx];
+      } else {
+        notaGuardada = {
+          id: payload.id,
+          texto: payload.texto,
+          categoria: payload.categoria,
+          alumnoId: payload.alumnoId,
+          fecha: ahora
+        };
+        this.notas.unshift(notaGuardada);
+      }
+    } else {
+      notaGuardada = {
+        id: Date.now(),
+        texto: payload.texto,
+        categoria: payload.categoria,
+        alumnoId: payload.alumnoId,
+        fecha: ahora
+      };
+      this.notas.unshift(notaGuardada);
+    }
+
+    this.saveNotas();
+
+    return {
+      success: true,
+      message: 'Nota personal guardada exitosamente.',
+      data: notaGuardada,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: DELETE /api/notas-personales/:id
+   */
+  public async eliminarNotaPersonal(id: string | number): Promise<ApiResponse<boolean>> {
+    this.notas = this.notas.filter(n => n.id !== id);
+    this.saveNotas();
+    await dbStorage.delete('notas', id);
+
+    return {
+      success: true,
+      message: 'Nota eliminada correctamente.',
+      data: true,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Retorna el catálogo dinámico de estudiantes persistido
+   */
+  public async getCatalogoEstudiantes(): Promise<EstudianteCatalogo[]> {
+    const extraKey = 'sistema_tutorias_estudiantes_extra_v1';
+    let extra: EstudianteCatalogo[] = [];
+    try {
+      const raw = localStorage.getItem(extraKey);
+      if (raw) extra = JSON.parse(raw);
+    } catch {}
+
+    const combinados = [...CATALOGO_ESTUDIANTES];
+    extra.forEach(e => {
+      if (!combinados.some(c => c.id === e.id)) {
+        combinados.push(e);
+      }
+    });
+    return combinados;
+  }
+
+  /**
+   * Retorna el catálogo dinámico de tutores persistido
+   */
+  public async getCatalogoTutores(): Promise<Tutor[]> {
+    const extraKey = 'sistema_tutorias_tutores_extra_v1';
+    let extra: Tutor[] = [];
+    try {
+      const raw = localStorage.getItem(extraKey);
+      if (raw) extra = JSON.parse(raw);
+    } catch {}
+
+    const combinados = [...TUTORES_DEMO];
+    extra.forEach(t => {
+      if (!combinados.some(c => c.id === t.id)) {
+        combinados.push(t);
+      }
+    });
+    return combinados;
+  }
+
+  /**
+   * Obtiene métricas en vivo del motor de persistencia (IndexedDB + LocalStorage)
+   */
+  public async getEstadisticasPersistencia(): Promise<EstadisticasPersistencia> {
+    const usuarios = await dbStorage.getAll('usuarios');
+    const tutores = await this.getCatalogoTutores();
+    const estudiantes = await this.getCatalogoEstudiantes();
+
+    return {
+      totalUsuarios: usuarios.length,
+      totalTutores: tutores.length,
+      totalEstudiantes: estudiantes.length,
+      totalAsignaciones: this.asignaciones.length,
+      totalCitas: this.citas.length,
+      totalArchivos: this.archivos.length,
+      totalActividades: this.actividades.length,
+      totalNotas: this.notas.length,
+      motor: 'IndexedDB (W3C) + LocalStorage',
+      estado: 'Sincronizado y Persistente'
+    };
+  }
+
+  /**
+   * Exporta toda la base de datos a un archivo JSON para respaldo o entrega
+   */
+  public async exportarBaseDeDatosJSON(): Promise<string> {
+    const data = await dbStorage.exportAllData();
+    // Asegurar que las colecciones en memoria actuales estén incluidas
+    data.asignaciones = this.asignaciones;
+    data.citas = this.citas;
+    data.archivos = this.archivos;
+    data.actividades = this.actividades;
+    data.notas = this.notas;
+    return JSON.stringify(data, null, 2);
+  }
+
+  /**
+   * Importa y reemplaza la base de datos completa desde un respaldo JSON
+   */
+  public async importarBaseDeDatosJSON(jsonStr: string): Promise<boolean> {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      await dbStorage.importAllData(parsed);
+
+      if (Array.isArray(parsed.asignaciones)) this.asignaciones = parsed.asignaciones;
+      if (Array.isArray(parsed.citas)) this.citas = parsed.citas;
+      if (Array.isArray(parsed.archivos)) this.archivos = parsed.archivos;
+      if (Array.isArray(parsed.actividades)) this.actividades = parsed.actividades;
+      if (Array.isArray(parsed.notas)) this.notas = parsed.notas;
+
+      this.save();
+      this.saveCitas();
+      this.saveArchivos();
+      this.saveActividades();
+      this.saveNotas();
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Resetear a valores de fábrica para pruebas
    */
-  public resetToDefault() {
+  public async resetToDefault() {
     this.asignaciones = [...ASIGNACIONES_INICIALES];
     this.citas = [...CITAS_INICIALES];
+    this.archivos = [...ARCHIVOS_INICIALES];
+    this.actividades = [...ACTIVIDADES_INICIALES];
+    this.notas = [
+      {
+        id: 1,
+        categoria: 'Duda de Asesoría',
+        texto: 'Preguntar al Dr. Mendoza sobre los requisitos de titulación por promedio y seminario de investigación.',
+        fecha: '14 de octubre, 2026'
+      },
+      {
+        id: 2,
+        categoria: 'Recordatorio',
+        texto: 'Repasar apuntes de la unidad 2 antes de la sesión presencial de este jueves.',
+        fecha: '12 de octubre, 2026'
+      }
+    ];
+
     this.save();
     this.saveCitas();
+    this.saveArchivos();
+    this.saveActividades();
+    this.saveNotas();
+  }
+
+  /**
+   * Eliminar todos los datos mock / de prueba hardcodeados (dejar base de datos limpia)
+   */
+  public async vaciarDatosMock() {
+    this.asignaciones = [];
+    this.citas = [];
+    this.archivos = [];
+    this.actividades = [];
+    this.notas = [];
+
+    this.save();
+    this.saveCitas();
+    this.saveArchivos();
+    this.saveActividades();
+    this.saveNotas();
+
+    await dbStorage.clear('asignaciones');
+    await dbStorage.clear('citas');
+    await dbStorage.clear('archivos');
+    await dbStorage.clear('actividades');
+    await dbStorage.clear('notas');
   }
 }
 
 export const tutoriaService = new TutoriaBackendService();
+

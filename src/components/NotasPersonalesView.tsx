@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   NotebookPen,
   Plus,
@@ -8,64 +8,55 @@ import {
   CheckCircle2,
   Sparkles,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Database
 } from 'lucide-react';
-
-export interface NotaPersonalItem {
-  id: number;
-  categoria: 'Duda de Asesoría' | 'Recordatorio' | 'Trámite / Beca' | 'General';
-  texto: string;
-  fecha: string;
-}
+import { tutoriaService } from '../services/tutoriaService';
+import { NotaPersonalItem } from '../types/tutoria';
 
 export const NotasPersonalesView: React.FC = () => {
-  const [notas, setNotas] = useState<NotaPersonalItem[]>([
-    {
-      id: 1,
-      categoria: 'Duda de Asesoría',
-      texto: 'Preguntar al Dr. Mendoza sobre los requisitos de titulación por promedio y seminario de investigación.',
-      fecha: '14 de octubre, 2026'
-    },
-    {
-      id: 2,
-      categoria: 'Recordatorio',
-      texto: 'Repasar apuntes de la unidad 2 de Cálculo Diferencial antes de la sesión presencial del jueves a las 11:00 AM.',
-      fecha: '12 de octubre, 2026'
-    },
-    {
-      id: 3,
-      categoria: 'Trámite / Beca',
-      texto: 'Solicitar carta de recomendación docente para la postulación a la beca de excelencia académica.',
-      fecha: '08 de octubre, 2026'
-    }
-  ]);
-
+  const [notas, setNotas] = useState<NotaPersonalItem[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [nuevaNotaTexto, setNuevaNotaTexto] = useState('');
   const [nuevaNotaCategoria, setNuevaNotaCategoria] = useState<NotaPersonalItem['categoria']>('Duda de Asesoría');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODAS');
   const [busqueda, setBusqueda] = useState('');
   const [mensajeGuardado, setMensajeGuardado] = useState(false);
 
-  const handleAgregarNota = (e: React.FormEvent) => {
+  const cargarNotas = async () => {
+    const res = await tutoriaService.getNotasPersonales();
+    if (res.success && res.data) {
+      setNotas(res.data);
+    }
+    setCargando(false);
+  };
+
+  useEffect(() => {
+    cargarNotas();
+    const unsub = tutoriaService.subscribe(() => {
+      cargarNotas();
+    });
+    return () => unsub();
+  }, []);
+
+  const handleAgregarNota = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevaNotaTexto.trim()) return;
 
-    const nueva: NotaPersonalItem = {
-      id: Date.now(),
+    await tutoriaService.guardarNotaPersonal({
       categoria: nuevaNotaCategoria,
-      texto: nuevaNotaTexto.trim(),
-      fecha: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
-    };
+      texto: nuevaNotaTexto.trim()
+    });
 
-    setNotas(prev => [nueva, ...prev]);
     setNuevaNotaTexto('');
     setMensajeGuardado(true);
     setTimeout(() => setMensajeGuardado(false), 2000);
   };
 
-  const handleEliminarNota = (id: number) => {
-    setNotas(prev => prev.filter(n => n.id !== id));
+  const handleEliminarNota = async (id: string | number) => {
+    await tutoriaService.eliminarNotaPersonal(id);
   };
+
 
   const notasFiltradas = notas.filter(nota => {
     const coincideFiltro = filtroCategoria === 'TODAS' || nota.categoria === filtroCategoria;

@@ -12,10 +12,11 @@ import {
   ChevronDown,
   NotebookPen,
   UserCircle,
-  LogOut
+  LogOut,
+  FolderOpen
 } from 'lucide-react';
 
-export type SeccionNavegacion = 'dashboard' | 'tutorados' | 'calendario' | 'notas' | 'perfil';
+export type SeccionNavegacion = 'dashboard' | 'tutorados' | 'calendario' | 'archivos' | 'notas' | 'perfil';
 
 interface SidebarProps {
   rolActivo: RolSimulado;
@@ -78,6 +79,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           shortLabel: 'Agenda'
         },
         {
+          id: 'archivos' as const,
+          label: 'Documentos y Tareas',
+          icon: FolderOpen,
+          badge: undefined,
+          shortLabel: 'Archivos'
+        },
+        {
           id: 'perfil' as const,
           label: 'Mi Perfil y Usuarios',
           icon: UserCircle,
@@ -106,6 +114,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: Calendar,
           badge: undefined,
           shortLabel: 'Agenda'
+        },
+        {
+          id: 'archivos' as const,
+          label: 'Evidencias y Tareas',
+          icon: FolderOpen,
+          badge: undefined,
+          shortLabel: 'Archivos'
         },
         {
           id: 'notas' as const,
