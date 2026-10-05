@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { EstudianteCatalogo, Tutor, AsignacionTutorado, CitaAsesoria, SolicitarAsesoriaPayload } from '../types/tutoria';
+import {
+  EstudianteCatalogo,
+  Tutor,
+  AsignacionTutorado,
+  CitaAsesoria,
+  SolicitarAsesoriaPayload,
+  NotaPersonalItem
+} from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
 import { formatSemestre, getEstadoConfig } from '../utils/tutoriaUtils';
+import { abrirGoogleCalendar, descargarArchivoICS } from '../utils/calendarExportUtils';
 import { AvatarWithFallback } from './AvatarWithFallback';
 import {
   GraduationCap,
@@ -16,14 +24,10 @@ import {
   X,
   Send,
   Trash2,
-  Plus
+  Plus,
+  CalendarPlus,
+  Download
 } from 'lucide-react';
-
-interface NotaPersonal {
-  id: number;
-  texto: string;
-  fecha: string;
-}
 
 interface AlumnoPortalViewProps {
   estudianteActivo: EstudianteCatalogo;
@@ -39,38 +43,36 @@ export const AlumnoPortalView: React.FC<AlumnoPortalViewProps> = ({
   const [citas, setCitas] = useState<CitaAsesoria[]>([]);
   const [modalSolicitarAbierto, setModalSolicitarAbierto] = useState(false);
 
-  // Notas Personales del estudiante
-  const [notasPersonales, setNotasPersonales] = useState<NotaPersonal[]>([
-    {
-      id: 1,
-      texto: 'Preguntar al Dr. Mendoza sobre los requisitos de titulación por promedio y seminario.',
-      fecha: '14 de octubre, 2026'
-    },
-    {
-      id: 2,
-      texto: 'Repasar apuntes de la unidad 2 antes de la sesión presencial de este jueves a las 11:00 AM.',
-      fecha: '12 de octubre, 2026'
-    }
-  ]);
+  // Notas Personales persistentes del estudiante
+  const [notasPersonales, setNotasPersonales] = useState<NotaPersonalItem[]>([]);
   const [nuevaNotaTexto, setNuevaNotaTexto] = useState('');
 
-  const handleAgregarNota = (e?: React.FormEvent) => {
+  const cargarNotasAlumno = async () => {
+    const res = await tutoriaService.getNotasPersonales(estudianteActivo.id);
+    if (res.success && res.data) {
+      setNotasPersonales(res.data);
+    }
+  };
+
+  const handleAgregarNota = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!nuevaNotaTexto.trim()) return;
 
-    const nueva: NotaPersonal = {
-      id: Date.now(),
-      texto: nuevaNotaTexto.trim(),
-      fecha: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
-    };
+    await tutoriaService.guardarNotaPersonal({
+      alumnoId: estudianteActivo.id,
+      categoria: 'Recordatorio',
+      texto: nuevaNotaTexto.trim()
+    });
 
-    setNotasPersonales(prev => [nueva, ...prev]);
     setNuevaNotaTexto('');
+    await cargarNotasAlumno();
   };
 
-  const handleEliminarNota = (id: number) => {
-    setNotasPersonales(prev => prev.filter(n => n.id !== id));
+  const handleEliminarNota = async (id: string | number) => {
+    await tutoriaService.eliminarNotaPersonal(id);
+    await cargarNotasAlumno();
   };
+
 
   // Formulario de solicitud de cita
   const [tema, setTema] = useState('Dificultad Académica en Materias');
@@ -92,8 +94,10 @@ export const AlumnoPortalView: React.FC<AlumnoPortalViewProps> = ({
 
   useEffect(() => {
     cargarDatosAlumno();
+    cargarNotasAlumno();
     const unsub = tutoriaService.subscribe(() => {
       cargarDatosAlumno();
+      cargarNotasAlumno();
     });
     return () => unsub();
   }, [estudianteActivo.id]);
@@ -359,20 +363,42 @@ export const AlumnoPortalView: React.FC<AlumnoPortalViewProps> = ({
                       )}
 
                       {/* Enlace o lugar y botón cancelar */}
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs">
-                        <div className="text-[11px] text-[#64748B] dark:text-slate-400">
-                          {esVirtual && cita.enlaceVirtual ? (
-                            <a
-                              href={cita.enlaceVirtual}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 font-semibold"
-                            >
-                              <Video className="w-3.5 h-3.5" />
-                              <span>Enlace a Google Meet</span>
-                            </a>
-                          ) : (
-                            <span>Lugar: {cita.lugar || tutor?.cubículo || 'Cubículo de tutoría'}</span>
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <div className="text-[11px] text-[#64748B] dark:text-slate-400">
+                            {esVirtual && cita.enlaceVirtual ? (
+                              <a
+                                href={cita.enlaceVirtual}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 font-semibold"
+                              >
+                                <Video className="w-3.5 h-3.5" />
+                                <span>Google Meet</span>
+                              </a>
+                            ) : (
+                              <span>Lugar: {cita.lugar || tutor?.cubículo || 'Cubículo'}</span>
+                            )}
+                          </div>
+
+                          {!esCancelada && (
+                            <div className="flex items-center gap-1 pl-1 border-l border-slate-200 dark:border-slate-700">
+                              <button
+                                onClick={() => abrirGoogleCalendar(cita, estudianteActivo.nombre, tutor?.nombre)}
+                                className="p-1 rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                                title="Añadir a Google Calendar"
+                              >
+                                <CalendarPlus className="w-3 h-3" />
+                                <span>Google Cal</span>
+                              </button>
+                              <button
+                                onClick={() => descargarArchivoICS([cita], `cita_${cita.fecha}.ics`, tutor?.nombre)}
+                                className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-[10px] cursor-pointer"
+                                title="Descargar archivo .ics"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                            </div>
                           )}
                         </div>
 

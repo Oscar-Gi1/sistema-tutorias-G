@@ -10,10 +10,13 @@ import {
   ChevronRight,
   UserCheck,
   ChevronDown,
-  NotebookPen
+  NotebookPen,
+  UserCircle,
+  LogOut,
+  FolderOpen
 } from 'lucide-react';
 
-export type SeccionNavegacion = 'dashboard' | 'tutorados' | 'calendario' | 'notas';
+export type SeccionNavegacion = 'dashboard' | 'tutorados' | 'calendario' | 'archivos' | 'notas' | 'perfil';
 
 interface SidebarProps {
   rolActivo: RolSimulado;
@@ -29,6 +32,7 @@ interface SidebarProps {
   conteoTutorados: number;
   colapsado: boolean;
   onToggleColapsar: () => void;
+  onCerrarSesion?: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -46,7 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCambiarSeccion,
   conteoTutorados,
   colapsado,
-  onToggleColapsar
+  onToggleColapsar,
+  onCerrarSesion
 }) => {
   const usuarioActual = rolActivo === 'TUTOR' ? tutorActivo : estudianteActivo;
 
@@ -72,6 +77,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: Calendar,
           badge: undefined,
           shortLabel: 'Agenda'
+        },
+        {
+          id: 'archivos' as const,
+          label: 'Documentos y Tareas',
+          icon: FolderOpen,
+          badge: undefined,
+          shortLabel: 'Archivos'
+        },
+        {
+          id: 'perfil' as const,
+          label: 'Mi Perfil y Usuarios',
+          icon: UserCircle,
+          badge: undefined,
+          shortLabel: 'Mi Perfil'
         }
       ]
     : [
@@ -97,11 +116,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           shortLabel: 'Agenda'
         },
         {
+          id: 'archivos' as const,
+          label: 'Evidencias y Tareas',
+          icon: FolderOpen,
+          badge: undefined,
+          shortLabel: 'Archivos'
+        },
+        {
           id: 'notas' as const,
           label: 'Mis Notas Personales',
           icon: NotebookPen,
           badge: undefined,
           shortLabel: 'Notas'
+        },
+        {
+          id: 'perfil' as const,
+          label: 'Mi Perfil y Cuenta',
+          icon: UserCircle,
+          badge: undefined,
+          shortLabel: 'Mi Perfil'
         }
       ];
 
@@ -282,6 +315,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none absolute right-2.5 top-2.5" />
             </div>
+          )}
+
+          {/* Botón de Cerrar Sesión (Logout) */}
+          {onCerrarSesion && (
+            <button
+              onClick={onCerrarSesion}
+              className={`w-full flex items-center gap-2 rounded-xl text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-600/80 transition-colors cursor-pointer ${
+                colapsado ? 'justify-center p-2.5' : 'justify-center px-3 py-2 bg-rose-950/40 border border-rose-800/50'
+              }`}
+              title="Cerrar sesión activa"
+            >
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
+              {!colapsado && <span>Cerrar Sesión</span>}
+            </button>
           )}
         </div>
       </aside>

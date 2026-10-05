@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { TUTORES_DEMO, CATALOGO_ESTUDIANTES } from './data/mockData';
-import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado } from './types/tutoria';
+import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado, RolUsuario, CitaAsesoria } from './types/tutoria';
 import { tutoriaService } from './services/tutoriaService';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { MiPerfilView } from './components/MiPerfilView';
+import { ArchivosEvidenciasView } from './components/ArchivosEvidenciasView';
 import { Sidebar, SeccionNavegacion } from './components/Sidebar';
 import { Header } from './components/Header';
 import { TutoradosDashboard } from './components/TutoradosDashboard';
@@ -31,7 +35,10 @@ import {
 } from 'lucide-react';
 
 function AppContent() {
+  const { sesion, logout, cambiarPerfilDemo } = useAuth();
   const [rolActivo, setRolActivo] = useState<RolSimulado>('TUTOR');
+  const [tutores, setTutores] = useState<Tutor[]>(TUTORES_DEMO);
+  const [catalogoEstudiantes, setCatalogoEstudiantes] = useState<EstudianteCatalogo[]>(CATALOGO_ESTUDIANTES);
   const [tutorActivo, setTutorActivo] = useState<Tutor>(TUTORES_DEMO[0]);
   const [estudianteActivo, setEstudianteActivo] = useState<EstudianteCatalogo>(CATALOGO_ESTUDIANTES[0]);
   const [seccionActiva, setSeccionActiva] = useState<SeccionNavegacion>('dashboard');
@@ -40,12 +47,94 @@ function AppContent() {
   const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
   const [tutoradoSeleccionado, setTutoradoSeleccionado] = useState<AsignacionTutorado | null>(null);
   const [tutorados, setTutorados] = useState<AsignacionTutorado[]>([]);
+  const [citas, setCitas] = useState<CitaAsesoria[]>([]);
+
+
+  // Sincronizar el rol activo y perfil (Tutor o Alumno) con la sesión JWT autenticada
+  useEffect(() => {
+    if (!sesion) return;
+
+    if (sesion.usuario.rol === 'TUTOR') {
+      setRolActivo('TUTOR');
+      const tutorEncontrado =
+        TUTORES_DEMO.find((t) => t.id === sesion.usuario.tutorProfileId) ||
+        TUTORES_DEMO.find((t) => t.email.toLowerCase() === sesion.usuario.email.toLowerCase()) ||
+        TUTORES_DEMO[0];
+      if (tutorEncontrado) {
+        setTutorActivo({
+          ...tutorEncontrado,
+          nombre: sesion.usuario.nombre,
+          departamento: sesion.usuario.departamento || tutorEncontrado.departamento,
+          cubículo: sesion.usuario.cubículo || tutorEncontrado.cubículo
+        });
+      }
+    } else {
+      setRolActivo('ALUMNO');
+      const estEncontrado =
+        CATALOGO_ESTUDIANTES.find((e) => e.id === sesion.usuario.estudianteProfileId) ||
+        CATALOGO_ESTUDIANTES.find((e) => e.email.toLowerCase() === sesion.usuario.email.toLowerCase()) ||
+        CATALOGO_ESTUDIANTES[0];
+      if (estEncontrado) {
+        setEstudianteActivo({
+          ...estEncontrado,
+          nombre: sesion.usuario.nombre,
+          matricula: sesion.usuario.matricula || estEncontrado.matricula,
+          carrera: sesion.usuario.carrera || estEncontrado.carrera,
+          semestre: sesion.usuario.semestre || estEncontrado.semestre,
+          telefono: sesion.usuario.telefono || estEncontrado.telefono
+        });
+      }
+    }
+  }, [sesion]);
+
+  // Redirección automática post-login según el rol autenticado
+  const handlePostLoginRedirect = (rolAutenticado: RolUsuario) => {
+    if (rolAutenticado === 'TUTOR') {
+      setRolActivo('TUTOR');
+      setSeccionActiva('dashboard');
+    } else {
+      setRolActivo('ALUMNO');
+      setSeccionActiva('dashboard');
+    }
+  };
+
+  const handleCambiarRolConSesion = (nuevoRol: RolSimulado) => {
+    setRolActivo(nuevoRol);
+    setSeccionActiva('dashboard');
+    if (nuevoRol === 'TUTOR') {
+      cambiarPerfilDemo(tutorActivo.id, 'TUTOR');
+    } else {
+      cambiarPerfilDemo(estudianteActivo.id, 'TUTORADO');
+    }
+  };
+
+  const handleCambiarTutorConSesion = (t: Tutor) => {
+    setTutorActivo(t);
+    setTutoradoSeleccionado(null);
+    cambiarPerfilDemo(t.id, 'TUTOR');
+  };
+
+  const handleCambiarEstudianteConSesion = (e: EstudianteCatalogo) => {
+    setEstudianteActivo(e);
+    cambiarPerfilDemo(e.id, 'TUTORADO');
+  };
 
   const cargarDatos = async () => {
     const res = await tutoriaService.getMisTutorados(tutorActivo.id);
     if (res.success && res.data) {
       setTutorados(res.data);
     }
+
+    const resCitas = await tutoriaService.getMiTutoriaComoAlumno(estudianteActivo.id);
+    if (resCitas.data?.citas) {
+      setCitas(resCitas.data.citas);
+    }
+
+    const tuts = await tutoriaService.getCatalogoTutores();
+    if (tuts.length > 0) setTutores(tuts);
+
+    const ests = await tutoriaService.getCatalogoEstudiantes();
+    if (ests.length > 0) setCatalogoEstudiantes(ests);
   };
 
   useEffect(() => {
@@ -54,7 +143,7 @@ function AppContent() {
       cargarDatos();
     });
     return () => unsub();
-  }, [tutorActivo.id]);
+  }, [tutorActivo.id, estudianteActivo.id]);
 
   const total = tutorados.length;
   const enRiesgo = tutorados.filter(t => t.estado === 'EN_RIESGO' || t.estado === 'CONDICIONADO');
@@ -63,105 +152,100 @@ function AppContent() {
     : '0.0';
   const totalNotas = tutorados.reduce((acc, curr) => acc + (curr.notas?.length || 0), 0);
 
-  // Sesiones agendadas en formato de lista pequeña para el Dashboard
-  const proximasSesionesResumen = [
-    {
-      id: 'ses-1',
-      hora: '11:00 AM',
-      fecha: 'Hoy, 15 Oct',
-      alumno: 'Carlos Eduardo Peña',
-      carrera: 'Ing. en Sistemas',
-      semestre: 3,
-      modalidad: 'Presencial',
-      cubículo: tutorActivo.cubículo,
-      urgente: true,
-      tema: 'Plan de Regularización Académica Preventiva'
-    },
-    {
-      id: 'ses-2',
-      hora: '04:00 PM',
-      fecha: 'Mañana, 16 Oct',
-      alumno: 'Mariana Silva Robledo',
-      carrera: 'Ing. en Software',
-      semestre: 5,
-      modalidad: 'Virtual',
-      cubículo: 'Google Meet',
-      urgente: false,
-      tema: 'Revisión y Validación de Proyecto Terminal'
-    },
-    {
-      id: 'ses-3',
-      hora: '09:30 AM',
-      fecha: 'Vie, 17 Oct',
-      alumno: 'Jorge Ramos Morales',
-      carrera: 'Tecnologías de Información',
-      semestre: 4,
-      modalidad: 'Presencial',
-      cubículo: tutorActivo.cubículo,
-      urgente: false,
-      tema: 'Asesoría para Trámite de Beca Institucional'
-    }
-  ];
+  // Sesiones agendadas dinámicamente desde la base de datos persistente
+  const proximasSesionesResumen = citas.length > 0
+    ? citas.slice(0, 3).map((cita, idx) => {
+        const alumno = catalogoEstudiantes.find(e => e.id === cita.estudianteId) || estudianteActivo;
+        return {
+          id: cita.id || `ses-${idx}`,
+          hora: cita.hora,
+          fecha: cita.fecha,
+          alumno: alumno.nombre,
+          carrera: alumno.carrera,
+          semestre: alumno.semestre,
+          modalidad: cita.modalidad,
+          cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : (cita.lugar || tutorActivo.cubículo),
+          urgente: cita.estado === 'Pendiente',
+          tema: cita.tema
+        };
+      })
+    : [];
+
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 pb-16 md:pb-0">
-      {/* ======================================================== */}
-      {/* 1. SECCIÓN SIDEBAR (IZQUIERDA) & BOTTOM TAB BAR MÓVIL    */}
-      {/* ======================================================== */}
-      <Sidebar
-        rolActivo={rolActivo}
-        onCambiarRol={(r) => {
-          setRolActivo(r);
-          setSeccionActiva('dashboard');
-        }}
-        tutorActivo={tutorActivo}
-        estudianteActivo={estudianteActivo}
-        onCambiarTutor={(t) => {
-          setTutorActivo(t);
-          setTutoradoSeleccionado(null);
-        }}
-        onCambiarEstudiante={setEstudianteActivo}
-        catalogoTutores={TUTORES_DEMO}
-        catalogoEstudiantes={CATALOGO_ESTUDIANTES}
-        seccionActiva={seccionActiva}
-        onCambiarSeccion={setSeccionActiva}
-        conteoTutorados={total}
-        colapsado={colapsado}
-        onToggleColapsar={() => setColapsado(prev => !prev)}
-      />
-
-      {/* ======================================================== */}
-      {/* CONTENEDOR PRINCIPAL: Adaptado al ancho del Sidebar      */}
-      {/* ======================================================== */}
-      <div
-        className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
-          colapsado ? 'md:pl-20' : 'md:pl-64'
-        }`}
-      >
-        {/* Barra Superior Estática y Minimalista (Sin botón de hamburguesa) */}
-        <Header
+    <ProtectedRoute
+      onLoginRedirect={handlePostLoginRedirect}
+      onIrInicioAutorizado={() => setSeccionActiva('dashboard')}
+    >
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 pb-16 md:pb-0">
+        {/* ======================================================== */}
+        {/* 1. SECCIÓN SIDEBAR (IZQUIERDA) & BOTTOM TAB BAR MÓVIL    */}
+        {/* ======================================================== */}
+        <Sidebar
           rolActivo={rolActivo}
-          onCambiarRol={(r) => {
-            setRolActivo(r);
-            setSeccionActiva('dashboard');
-          }}
+          onCambiarRol={handleCambiarRolConSesion}
           tutorActivo={tutorActivo}
           estudianteActivo={estudianteActivo}
+          onCambiarTutor={handleCambiarTutorConSesion}
+          onCambiarEstudiante={handleCambiarEstudianteConSesion}
+          catalogoTutores={tutores}
+          catalogoEstudiantes={catalogoEstudiantes}
           seccionActiva={seccionActiva}
-          catalogoTutores={TUTORES_DEMO}
-          catalogoEstudiantes={CATALOGO_ESTUDIANTES}
-          onCambiarTutor={(t) => {
-            setTutorActivo(t);
-            setTutoradoSeleccionado(null);
-          }}
-          onCambiarEstudiante={setEstudianteActivo}
+          onCambiarSeccion={setSeccionActiva}
+          conteoTutorados={total}
+          colapsado={colapsado}
+          onToggleColapsar={() => setColapsado(prev => !prev)}
+          onCerrarSesion={logout}
         />
 
         {/* ======================================================== */}
-        {/* REFACTORIZACIÓN MODULAR DE VISTAS                        */}
+        {/* CONTENEDOR PRINCIPAL: Adaptado al ancho del Sidebar      */}
         {/* ======================================================== */}
-        <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {rolActivo === 'TUTOR' && (
+        <div
+          className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
+            colapsado ? 'md:pl-20' : 'md:pl-64'
+          }`}
+        >
+          {/* Barra Superior Estática y Minimalista (Sin botón de hamburguesa) */}
+          <Header
+            rolActivo={rolActivo}
+            onCambiarRol={handleCambiarRolConSesion}
+            tutorActivo={tutorActivo}
+            estudianteActivo={estudianteActivo}
+            seccionActiva={seccionActiva}
+            catalogoTutores={tutores}
+            catalogoEstudiantes={catalogoEstudiantes}
+            onCambiarTutor={handleCambiarTutorConSesion}
+            onCambiarEstudiante={handleCambiarEstudianteConSesion}
+            onIrPerfil={() => setSeccionActiva('perfil')}
+            onCerrarSesion={logout}
+          />
+
+          {/* ======================================================== */}
+          {/* REFACTORIZACIÓN MODULAR DE VISTAS                        */}
+          {/* ======================================================== */}
+          <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {/* VISTA TRANSVERSAL: MI PERFIL Y BASE DE USUARIOS */}
+            {seccionActiva === 'perfil' && (
+              <MiPerfilView
+                onCambioRol={(nuevoRol) => {
+                  handlePostLoginRedirect(nuevoRol);
+                }}
+              />
+            )}
+
+            {/* VISTA TRANSVERSAL: DOCUMENTOS, EVIDENCIAS Y TAREAS */}
+            {seccionActiva === 'archivos' && (
+              <ArchivosEvidenciasView
+                rolActivo={rolActivo}
+                tutorActivo={tutorActivo}
+                estudianteActivo={estudianteActivo}
+                catalogoEstudiantes={catalogoEstudiantes}
+              />
+            )}
+
+
+            {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'TUTOR' && (
             <>
               {/* =================================================== */}
               {/* VISTA 1: INICIO / DASHBOARD (dashboard.component.html)*/}
@@ -357,7 +441,7 @@ function AppContent() {
                 <div className="space-y-6 animate-in fade-in duration-200">
                   {/* Cuadrícula Completa del Calendario Visual de Sesiones */}
                   <VisualCalendarWidget
-                    citas={[]}
+                    citas={citas}
                     onNuevaSesion={() => {}}
                   />
 
@@ -366,7 +450,7 @@ function AppContent() {
                     rolActivo="TUTOR"
                     tutorActivo={tutorActivo}
                     estudianteActivo={estudianteActivo}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -393,15 +477,15 @@ function AppContent() {
           {/* ======================================================== */}
           {/* VISTAS PARA EL ROL DE ALUMNO                             */}
           {/* ======================================================== */}
-          {rolActivo === 'ALUMNO' && (
+          {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'ALUMNO' && (
             <>
               {/* 1. Inicio / Dashboard o Mi Tutoría */}
               {(seccionActiva === 'dashboard' || seccionActiva === 'tutorados') && (
                 <div className="max-w-6xl w-full mx-auto animate-in fade-in duration-200">
                   <AlumnoPortalView
                     estudianteActivo={estudianteActivo}
-                    onCambiarEstudiante={setEstudianteActivo}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    onCambiarEstudiante={handleCambiarEstudianteConSesion}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -410,7 +494,7 @@ function AppContent() {
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   <VisualCalendarWidget
-                    citas={[]}
+                    citas={citas}
                     onNuevaSesion={() => {}}
                   />
 
@@ -418,7 +502,7 @@ function AppContent() {
                     rolActivo="ALUMNO"
                     tutorActivo={tutorActivo}
                     estudianteActivo={estudianteActivo}
-                    catalogoEstudiantes={CATALOGO_ESTUDIANTES}
+                    catalogoEstudiantes={catalogoEstudiantes}
                   />
                 </div>
               )}
@@ -457,8 +541,10 @@ function AppContent() {
         isOpen={modalAsignarAbierto}
         onClose={() => setModalAsignarAbierto(false)}
         tutorActivo={tutorActivo}
+        catalogoEstudiantes={catalogoEstudiantes}
         onAsignacionExitosa={cargarDatos}
       />
+
 
       <DetalleTutoradoModal
         asignacion={tutoradoSeleccionado}
@@ -466,14 +552,17 @@ function AppContent() {
         tutorActivo={tutorActivo}
         onActualizacion={cargarDatos}
       />
-    </div>
+      </div>
+    </ProtectedRoute>
   );
 }
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

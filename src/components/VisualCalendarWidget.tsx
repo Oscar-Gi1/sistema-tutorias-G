@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, Clock, MapPin, Video, ChevronLeft, ChevronRight, AlertCircle, PlusCircle } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, MapPin, Video, ChevronLeft, ChevronRight, AlertCircle, PlusCircle, CalendarPlus } from 'lucide-react';
 import { CitaAsesoria } from '../types/tutoria';
+import { descargarArchivoICS } from '../utils/calendarExportUtils';
 
 interface VisualCalendarWidgetProps {
   citas: CitaAsesoria[];
@@ -25,69 +26,29 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
     { dia: 'Sáb', fecha: '18 Oct', numero: 18 }
   ];
 
-  // Eventos de ejemplo con etiquetas de colores redondeadas
-  const eventosVisuales = [
-    {
-      id: 'ev-1',
-      diaNumero: 13,
-      hora: '10:00 AM',
-      titulo: 'Seguimiento Académico Parcial',
-      alumno: 'Ana Paola Gómez',
-      modalidad: 'Presencial',
-      tipo: 'regular',
-      colorBg: 'bg-[#20B2AA]/15 text-[#0E7470] border border-[#20B2AA]/40',
-      badgeColor: 'bg-[#20B2AA] text-white',
-      urgente: false
-    },
-    {
-      id: 'ev-2',
-      diaNumero: 14,
-      hora: '12:00 PM',
-      titulo: 'Revisión Curricular',
-      alumno: 'Luis Fernando Morales',
-      modalidad: 'Virtual',
-      tipo: 'virtual',
-      colorBg: 'bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800',
-      badgeColor: 'bg-sky-500 text-white',
-      urgente: false
-    },
-    {
-      id: 'ev-3',
-      diaNumero: 15,
-      hora: '11:00 AM',
-      titulo: 'Próxima Acción: Alerta de Regularización',
-      alumno: 'Carlos Eduardo Peña',
-      modalidad: 'Presencial',
-      tipo: 'urgente',
-      colorBg: 'bg-[#FFF5F2] text-[#C4431B] border-2 border-[#FF7F50] shadow-xs',
-      badgeColor: 'bg-[#FF7F50] text-white font-bold',
-      urgente: true
-    },
-    {
-      id: 'ev-4',
-      diaNumero: 16,
-      hora: '04:00 PM',
-      titulo: 'Revisión Proyecto Terminal',
-      alumno: 'Mariana Silva',
-      modalidad: 'Virtual',
-      tipo: 'regular',
-      colorBg: 'bg-[#20B2AA]/15 text-[#0E7470] border border-[#20B2AA]/40',
-      badgeColor: 'bg-[#20B2AA] text-white',
-      urgente: false
-    },
-    {
-      id: 'ev-5',
-      diaNumero: 17,
-      hora: '09:30 AM',
-      titulo: 'Asesoría Trámite de Beca',
-      alumno: 'Jorge Ramos',
-      modalidad: 'Presencial',
-      tipo: 'regular',
-      colorBg: 'bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800',
-      badgeColor: 'bg-indigo-500 text-white',
-      urgente: false
-    }
-  ];
+  // Mapear citas reales de la base de datos a eventos visuales del calendario
+  const eventosVisuales = citas.map((cita) => {
+    const parts = (cita.fecha || '').split('-').map(Number);
+    const diaNumero = parts[2] || 15;
+    const esVirtual = cita.modalidad === 'Virtual';
+    const esPendiente = cita.estado === 'Pendiente';
+
+    return {
+      id: cita.id,
+      diaNumero,
+      hora: cita.hora,
+      titulo: cita.tema,
+      alumno: cita.tema,
+      modalidad: cita.modalidad,
+      tipo: esVirtual ? 'virtual' : 'regular',
+      colorBg: esVirtual
+        ? 'bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800'
+        : 'bg-[#20B2AA]/15 text-[#0E7470] border border-[#20B2AA]/40',
+      badgeColor: esVirtual ? 'bg-sky-500 text-white' : 'bg-[#20B2AA] text-white',
+      urgente: esPendiente
+    };
+  });
+
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-[16px] p-6 shadow-[0_4px_6px_rgba(0,0,0,0.05)] border border-slate-200/80 dark:border-slate-800 transition-all">
@@ -128,6 +89,15 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+
+          <button
+            onClick={() => descargarArchivoICS(citas, 'calendario_sesiones.ics')}
+            className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Exportar a Google Calendar / Descargar .ics"
+          >
+            <CalendarPlus className="w-3.5 h-3.5 text-[#20B2AA]" />
+            <span className="hidden sm:inline">Exportar a Cal</span>
+          </button>
 
           {onNuevaSesion && (
             <button
