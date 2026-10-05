@@ -35,7 +35,7 @@ export const CATALOGO_ESTUDIANTES: EstudianteCatalogo[] = [
     id: 'est-101',
     matricula: '2023-ISC-014',
     nombre: 'Ana Lucía Morales Rivera',
-    email: 'ana.morales@alumno.universidad.edu.mx',
+    email: 'ana.lucia@universidad.edu.mx',
     carrera: 'Ingeniería en Sistemas Computacionales',
     semestre: 4,
     promedio: 9.4,

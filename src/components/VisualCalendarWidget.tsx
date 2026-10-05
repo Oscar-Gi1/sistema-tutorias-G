@@ -43,8 +43,8 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
       tipo: esVirtual ? 'virtual' : 'regular',
       colorBg: esVirtual
         ? 'bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800'
-        : 'bg-[#20B2AA]/15 text-[#0E7470] border border-[#20B2AA]/40',
-      badgeColor: esVirtual ? 'bg-sky-500 text-white' : 'bg-[#20B2AA] text-white',
+        : 'bg-[#EE7402]/15 text-[#C45500] dark:text-amber-400 border border-[#EE7402]/30',
+      badgeColor: esVirtual ? 'bg-sky-500 text-white' : 'bg-[#EE7402] text-white',
       urgente: esPendiente
     };
   });
@@ -56,10 +56,10 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#20B2AA]/10 text-[#20B2AA] flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded-xl bg-[#EE7402]/10 text-[#EE7402] flex items-center justify-center font-bold">
               <CalendarIcon className="w-4 h-4" />
             </div>
-            <h2 className="font-heading font-semibold text-lg text-slate-900 dark:text-white">
+            <h2 className="font-heading font-semibold text-lg text-slate-900 dark:white">
               Calendario Visual de Sesiones
             </h2>
           </div>
@@ -95,14 +95,14 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
             className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
             title="Exportar a Google Calendar / Descargar .ics"
           >
-            <CalendarPlus className="w-3.5 h-3.5 text-[#20B2AA]" />
+            <CalendarPlus className="w-3.5 h-3.5 text-[#EE7402]" />
             <span className="hidden sm:inline">Exportar a Cal</span>
           </button>
 
           {onNuevaSesion && (
             <button
               onClick={onNuevaSesion}
-              className="px-3 py-1.5 bg-[#20B2AA] hover:bg-[#1CA099] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              className="px-3 py-1.5 bg-[#EE7402] hover:bg-[#D96200] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               <span>Agendar</span>
@@ -121,7 +121,7 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
               key={d.dia}
               className={`p-3 rounded-2xl border transition-all flex flex-col min-h-[160px] ${
                 d.hoy
-                  ? 'bg-slate-50/80 dark:bg-slate-800/40 border-[#20B2AA] ring-2 ring-[#20B2AA]/20'
+                  ? 'bg-slate-50/80 dark:bg-slate-800/40 border-[#EE7402] ring-2 ring-[#EE7402]/20'
                   : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800'
               }`}
             >
@@ -133,7 +133,7 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
                 <span
                   className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded-lg ${
                     d.hoy
-                      ? 'bg-[#20B2AA] text-white'
+                      ? 'bg-[#EE7402] text-white'
                       : 'text-slate-800 dark:text-slate-200'
                   }`}
                 >
@@ -195,7 +195,7 @@ export const VisualCalendarWidget: React.FC<VisualCalendarWidgetProps> = ({
           <span>Atención Urgente / Riesgo</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#20B2AA]" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#EE7402]" />
           <span>Sesión Ordinaria</span>
         </div>
         <div className="flex items-center gap-1.5">
