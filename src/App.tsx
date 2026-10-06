@@ -1,41 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { TUTORES_DEMO, CATALOGO_ESTUDIANTES } from './data/mockData';
-import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado, RolUsuario, CitaAsesoria } from './types/tutoria';
+import { Tutor, EstudianteCatalogo, AsignacionTutorado, RolSimulado, CitaAsesoria } from './types/tutoria';
 import { tutoriaService } from './services/tutoriaService';
-import { ThemeProvider } from './context/ThemeContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
-import { MiPerfilView } from './components/MiPerfilView';
-import { ArchivosEvidenciasView } from './components/ArchivosEvidenciasView';
 import { Sidebar, SeccionNavegacion } from './components/Sidebar';
 import { Header } from './components/Header';
-import { TutoradosDashboard } from './components/TutoradosDashboard';
-import { AlumnoPortalView } from './components/AlumnoPortalView';
-import { CalendarioSesionesView } from './components/CalendarioSesionesView';
-import { NotasPersonalesView } from './components/NotasPersonalesView';
-import { VisualCalendarWidget } from './components/VisualCalendarWidget';
+import { StatCard } from './components/StatCard';
 import { RightPanel } from './components/RightPanel';
 import { AsignarTutoradoModal } from './components/AsignarTutoradoModal';
 import { DetalleTutoradoModal } from './components/DetalleTutoradoModal';
-import { StatCard } from './components/StatCard';
+import { AlumnoPortalView } from './components/AlumnoPortalView';
+import { CalendarioSesionesView } from './components/CalendarioSesionesView';
+import { TutoradosDashboard } from './components/TutoradosDashboard';
+import { VisualCalendarWidget } from './components/VisualCalendarWidget';
+import { ArchivosEvidenciasView } from './components/ArchivosEvidenciasView';
+import { NotasPersonalesView } from './components/NotasPersonalesView';
+import { MiPerfilView } from './components/MiPerfilView';
+import { AuthView } from './components/AuthView';
+import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { formatSemestre } from './utils/tutoriaUtils';
 import {
-  GraduationCap,
   Users,
   Award,
   AlertTriangle,
   Clock,
-  Calendar,
   UserPlus,
   ArrowRight,
-  CheckCircle2,
   MapPin,
   Video,
-  FileText
+  GraduationCap
 } from 'lucide-react';
 
 function AppContent() {
-  const { sesion, logout, cambiarPerfilDemo } = useAuth();
+  const { logout: contextLogout, iniciarSesionDirecta } = useAuth();
+
+  // ========================================================
+  // 1. ELEVACIÓN DEL ESTADO DE AUTENTICACIÓN (State Hoisting)
+  // ========================================================
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [userRole, setUserRole] = useState<'tutor' | 'alumno'>('tutor');
+
+  // Estado de perfiles y vistas activas
   const [rolActivo, setRolActivo] = useState<RolSimulado>('TUTOR');
   const [tutores, setTutores] = useState<Tutor[]>(TUTORES_DEMO);
   const [catalogoEstudiantes, setCatalogoEstudiantes] = useState<EstudianteCatalogo[]>(CATALOGO_ESTUDIANTES);
@@ -49,74 +54,28 @@ function AppContent() {
   const [tutorados, setTutorados] = useState<AsignacionTutorado[]>([]);
   const [citas, setCitas] = useState<CitaAsesoria[]>([]);
 
+  // Manejador centralizado para login exitoso y transición inmediata
+  const handleLoginSuccess = (rol: 'tutor' | 'alumno') => {
+    setUserRole(rol);
+    setIsAuthenticated(true);
+    iniciarSesionDirecta(rol);
 
-  // Sincronizar el rol activo y perfil (Tutor o Alumno) con la sesión JWT autenticada
-  useEffect(() => {
-    if (!sesion) return;
-
-    if (sesion.usuario.rol === 'TUTOR') {
-      setRolActivo('TUTOR');
-      const tutorEncontrado =
-        TUTORES_DEMO.find((t) => t.id === sesion.usuario.tutorProfileId) ||
-        TUTORES_DEMO.find((t) => t.email.toLowerCase() === sesion.usuario.email.toLowerCase()) ||
-        TUTORES_DEMO[0];
-      if (tutorEncontrado) {
-        setTutorActivo({
-          ...tutorEncontrado,
-          nombre: sesion.usuario.nombre,
-          departamento: sesion.usuario.departamento || tutorEncontrado.departamento,
-          cubículo: sesion.usuario.cubículo || tutorEncontrado.cubículo
-        });
-      }
-    } else {
-      setRolActivo('ALUMNO');
-      const estEncontrado =
-        CATALOGO_ESTUDIANTES.find((e) => e.id === sesion.usuario.estudianteProfileId) ||
-        CATALOGO_ESTUDIANTES.find((e) => e.email.toLowerCase() === sesion.usuario.email.toLowerCase()) ||
-        CATALOGO_ESTUDIANTES[0];
-      if (estEncontrado) {
-        setEstudianteActivo({
-          ...estEncontrado,
-          nombre: sesion.usuario.nombre,
-          matricula: sesion.usuario.matricula || estEncontrado.matricula,
-          carrera: sesion.usuario.carrera || estEncontrado.carrera,
-          semestre: sesion.usuario.semestre || estEncontrado.semestre,
-          telefono: sesion.usuario.telefono || estEncontrado.telefono
-        });
-      }
-    }
-  }, [sesion]);
-
-  // Redirección automática post-login según el rol autenticado
-  const handlePostLoginRedirect = (rolAutenticado: RolUsuario) => {
-    if (rolAutenticado === 'TUTOR') {
+    if (rol === 'tutor') {
       setRolActivo('TUTOR');
       setSeccionActiva('dashboard');
+      setTutorActivo(TUTORES_DEMO[0]);
     } else {
       setRolActivo('ALUMNO');
-      setSeccionActiva('dashboard');
+      setSeccionActiva('tutorados');
+      setEstudianteActivo(CATALOGO_ESTUDIANTES[0]);
     }
   };
 
-  const handleCambiarRolConSesion = (nuevoRol: RolSimulado) => {
-    setRolActivo(nuevoRol);
-    setSeccionActiva('dashboard');
-    if (nuevoRol === 'TUTOR') {
-      cambiarPerfilDemo(tutorActivo.id, 'TUTOR');
-    } else {
-      cambiarPerfilDemo(estudianteActivo.id, 'TUTORADO');
-    }
-  };
-
-  const handleCambiarTutorConSesion = (t: Tutor) => {
-    setTutorActivo(t);
-    setTutoradoSeleccionado(null);
-    cambiarPerfilDemo(t.id, 'TUTOR');
-  };
-
-  const handleCambiarEstudianteConSesion = (e: EstudianteCatalogo) => {
-    setEstudianteActivo(e);
-    cambiarPerfilDemo(e.id, 'TUTORADO');
+  // Manejador centralizado para cierre de sesión seguro
+  const handleCerrarSesion = () => {
+    setIsAuthenticated(false);
+    setUserRole('tutor');
+    contextLogout();
   };
 
   const cargarDatos = async () => {
@@ -138,158 +97,151 @@ function AppContent() {
   };
 
   useEffect(() => {
-    cargarDatos();
-    const unsub = tutoriaService.subscribe(() => {
+    if (isAuthenticated) {
       cargarDatos();
-    });
-    return () => unsub();
-  }, [tutorActivo.id, estudianteActivo.id]);
+      const unsub = tutoriaService.subscribe(() => {
+        cargarDatos();
+      });
+      return () => unsub();
+    }
+  }, [isAuthenticated, tutorActivo.id, estudianteActivo.id]);
+
+  // ========================================================
+  // DECISIÓN CONDICIONAL EN RAÍZ:
+  // Si isAuthenticated === false -> Muestra estrictamente el Login de la UAT
+  // ========================================================
+  if (!isAuthenticated) {
+    return (
+      <AuthView
+        onLoginSuccess={handleLoginSuccess}
+        onLoginDirecto={handleLoginSuccess}
+      />
+    );
+  }
 
   const total = tutorados.length;
-  const enRiesgo = tutorados.filter(t => t.estado === 'EN_RIESGO' || t.estado === 'CONDICIONADO');
-  const promedioGeneral = total > 0
-    ? (tutorados.reduce((acc, curr) => acc + curr.estudiante.promedio, 0) / total).toFixed(1)
-    : '0.0';
+  const enRiesgo = tutorados.filter((t) => t.estado === 'EN_RIESGO' || t.estado === 'CONDICIONADO');
+  const promedioGeneral =
+    total > 0
+      ? (tutorados.reduce((acc, curr) => acc + curr.estudiante.promedio, 0) / total).toFixed(1)
+      : '0.0';
   const totalNotas = tutorados.reduce((acc, curr) => acc + (curr.notas?.length || 0), 0);
 
-  // Sesiones agendadas dinámicamente desde la base de datos persistente
-  const proximasSesionesResumen = citas.length > 0
-    ? citas.slice(0, 3).map((cita, idx) => {
-        const alumno = catalogoEstudiantes.find(e => e.id === cita.estudianteId) || estudianteActivo;
-        return {
-          id: cita.id || `ses-${idx}`,
-          hora: cita.hora,
-          fecha: cita.fecha,
-          alumno: alumno.nombre,
-          carrera: alumno.carrera,
-          semestre: alumno.semestre,
-          modalidad: cita.modalidad,
-          cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : (cita.lugar || tutorActivo.cubículo),
-          urgente: cita.estado === 'Pendiente',
-          tema: cita.tema
-        };
-      })
-    : [];
-
+  // Sesiones agendadas para el panel del tutor
+  const proximasSesionesResumen =
+    citas.length > 0
+      ? citas.slice(0, 3).map((cita, idx) => {
+          const alumno = catalogoEstudiantes.find((e) => e.id === cita.estudianteId) || estudianteActivo;
+          return {
+            id: cita.id || `ses-${idx}`,
+            hora: cita.hora,
+            fecha: cita.fecha,
+            alumno: alumno.nombre,
+            carrera: alumno.carrera,
+            semestre: alumno.semestre,
+            modalidad: cita.modalidad,
+            cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : cita.lugar || tutorActivo.cubículo,
+            urgente: cita.estado === 'Pendiente',
+            tema: cita.tema
+          };
+        })
+      : [];
 
   return (
-    <ProtectedRoute
-      onLoginRedirect={handlePostLoginRedirect}
-      onIrInicioAutorizado={() => setSeccionActiva('dashboard')}
-    >
-      <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 pb-16 md:pb-0">
-        {/* ======================================================== */}
-        {/* 1. SECCIÓN SIDEBAR (IZQUIERDA) & BOTTOM TAB BAR MÓVIL    */}
-        {/* ======================================================== */}
-        <Sidebar
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 pb-16 md:pb-0">
+      {/* 1. SECCIÓN SIDEBAR (IZQUIERDA) & BOTTOM TAB BAR MÓVIL */}
+      <Sidebar
+        rolActivo={rolActivo}
+        tutorActivo={tutorActivo}
+        estudianteActivo={estudianteActivo}
+        catalogoTutores={tutores}
+        catalogoEstudiantes={catalogoEstudiantes}
+        seccionActiva={seccionActiva}
+        onCambiarSeccion={setSeccionActiva}
+        conteoTutorados={total}
+        colapsado={colapsado}
+        onToggleColapsar={() => setColapsado((prev) => !prev)}
+        onCerrarSesion={handleCerrarSesion}
+      />
+
+      {/* CONTENEDOR PRINCIPAL: Adaptado al ancho del Sidebar */}
+      <div
+        className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
+          colapsado ? 'md:pl-20' : 'md:pl-64'
+        }`}
+      >
+        {/* Barra Superior Institucional UAT */}
+        <Header
           rolActivo={rolActivo}
-          onCambiarRol={handleCambiarRolConSesion}
           tutorActivo={tutorActivo}
           estudianteActivo={estudianteActivo}
-          onCambiarTutor={handleCambiarTutorConSesion}
-          onCambiarEstudiante={handleCambiarEstudianteConSesion}
-          catalogoTutores={tutores}
-          catalogoEstudiantes={catalogoEstudiantes}
           seccionActiva={seccionActiva}
-          onCambiarSeccion={setSeccionActiva}
-          conteoTutorados={total}
-          colapsado={colapsado}
-          onToggleColapsar={() => setColapsado(prev => !prev)}
-          onCerrarSesion={logout}
+          onIrPerfil={() => setSeccionActiva('perfil')}
+          onCerrarSesion={handleCerrarSesion}
         />
 
         {/* ======================================================== */}
-        {/* CONTENEDOR PRINCIPAL: Adaptado al ancho del Sidebar      */}
+        {/* REFACTORIZACIÓN MODULAR DE VISTAS POR ROL                */}
         {/* ======================================================== */}
-        <div
-          className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
-            colapsado ? 'md:pl-20' : 'md:pl-64'
-          }`}
-        >
-          {/* Barra Superior Estática y Minimalista (Sin botón de hamburguesa) */}
-          <Header
-            rolActivo={rolActivo}
-            onCambiarRol={handleCambiarRolConSesion}
-            tutorActivo={tutorActivo}
-            estudianteActivo={estudianteActivo}
-            seccionActiva={seccionActiva}
-            catalogoTutores={tutores}
-            catalogoEstudiantes={catalogoEstudiantes}
-            onCambiarTutor={handleCambiarTutorConSesion}
-            onCambiarEstudiante={handleCambiarEstudianteConSesion}
-            onIrPerfil={() => setSeccionActiva('perfil')}
-            onCerrarSesion={logout}
-          />
+        <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* VISTA: MI PERFIL INSTITUCIONAL */}
+          {seccionActiva === 'perfil' && (
+            <MiPerfilView onLogout={handleCerrarSesion} />
+          )}
 
-          {/* ======================================================== */}
-          {/* REFACTORIZACIÓN MODULAR DE VISTAS                        */}
-          {/* ======================================================== */}
-          <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {/* VISTA TRANSVERSAL: MI PERFIL Y BASE DE USUARIOS */}
-            {seccionActiva === 'perfil' && (
-              <MiPerfilView
-                onCambioRol={(nuevoRol) => {
-                  handlePostLoginRedirect(nuevoRol);
-                }}
-              />
-            )}
+          {/* VISTA: DOCUMENTOS Y ARCHIVOS (DIFERENCIADO POR ROL) */}
+          {seccionActiva === 'archivos' && (
+            <ArchivosEvidenciasView
+              rolActivo={rolActivo}
+              tutorActivo={tutorActivo}
+              estudianteActivo={estudianteActivo}
+              catalogoEstudiantes={catalogoEstudiantes}
+            />
+          )}
 
-            {/* VISTA TRANSVERSAL: DOCUMENTOS, EVIDENCIAS Y TAREAS */}
-            {seccionActiva === 'archivos' && (
-              <ArchivosEvidenciasView
-                rolActivo={rolActivo}
-                tutorActivo={tutorActivo}
-                estudianteActivo={estudianteActivo}
-                catalogoEstudiantes={catalogoEstudiantes}
-              />
-            )}
-
-
-            {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'TUTOR' && (
+          {/* ====================================================== */}
+          {/* VISTAS EXCLUSIVAS DEL TUTOR DOCENTE                    */}
+          {/* ====================================================== */}
+          {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'TUTOR' && (
             <>
-              {/* =================================================== */}
-              {/* VISTA 1: INICIO / DASHBOARD (dashboard.component.html)*/}
-              {/* Estrictamente un Resumen con Métricas KPI y lista   */}
-              {/* pequeña de Próximas Sesiones / Próxima Acción       */}
-              {/* =================================================== */}
+              {/* 1. Panel Principal (Dashboard) */}
               {seccionActiva === 'dashboard' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start animate-in fade-in duration-200">
-                  {/* Contenido Central: Resumen y Métricas KPI */}
                   <div className="lg:col-span-8 space-y-6">
                     {/* Tarjeta de Bienvenida del Tutor */}
-                    <div className="bg-white dark:bg-slate-900 rounded-[16px] p-6 shadow-[0_4px_6px_rgba(0,0,0,0.05)] border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-[16px] p-6 shadow-[0_2px_4px_rgba(0,0,0,0.05)] border border-slate-200/90 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#20B2AA]/15 text-[#0E7470] dark:text-[#20B2AA] font-heading">
-                            Resumen Institucional
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#EE7402]/10 text-[#EE7402] border border-[#EE7402]/30 font-heading">
+                            UAT &middot; Coordinación Docente
                           </span>
-                          <span className="text-xs text-[#64748B] dark:text-slate-400">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             Ciclo Escolar 2026-1
                           </span>
                         </div>
-                        <h1 className="font-heading font-semibold text-xl sm:text-2xl text-slate-900 dark:text-white mt-1 tracking-tight">
-                          Bienvenido, {tutorActivo.nombre}
+                        <h1 className="font-heading font-semibold text-xl sm:text-2xl text-slate-900 dark:text-white mt-1.5 tracking-tight">
+                          Bienvenido(a), {tutorActivo.nombre}
                         </h1>
-                        <p className="text-xs text-[#64748B] dark:text-slate-400 mt-1">
-                          {tutorActivo.departamento} &bull; Cubículo de tutoría: {tutorActivo.cubículo}
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {tutorActivo.departamento} &bull; Cubículo de atención: {tutorActivo.cubículo}
                         </p>
                       </div>
 
                       <button
                         onClick={() => setModalAsignarAbierto(true)}
-                        className="px-4 py-2.5 bg-[#20B2AA] hover:bg-[#1CA099] active:bg-[#178B85] text-white rounded-[12px] text-xs font-semibold flex items-center gap-2 shadow-xs transition-all hover:scale-[1.01] cursor-pointer self-start sm:self-auto"
+                        className="px-4 py-2.5 bg-[#EE7402] hover:bg-[#D96200] active:bg-[#BF5600] text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-all hover:scale-[1.01] cursor-pointer self-start sm:self-auto"
                       >
                         <UserPlus className="w-4 h-4" />
                         <span>Asignar Alumno</span>
                       </button>
                     </div>
 
-                    {/* Tarjetas de KPI (Métricas Principales) */}
+                    {/* Tarjetas de KPI */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                       <StatCard
                         title="Tutorados Asignados"
                         value={total}
-                        subtitle="Acompañamiento escolar"
+                        subtitle="Acompañamiento UAT"
                         icon={Users}
                         variant="default"
                       />
@@ -297,7 +249,11 @@ function AppContent() {
                       <StatCard
                         title="Alumnos en Riesgo"
                         value={enRiesgo.length}
-                        badge={total > 0 && enRiesgo.length > 0 ? `(${Math.round((enRiesgo.length / total) * 100)}%)` : undefined}
+                        badge={
+                          total > 0 && enRiesgo.length > 0
+                            ? `(${Math.round((enRiesgo.length / total) * 100)}%)`
+                            : undefined
+                        }
                         subtitle="Atención prioritaria"
                         icon={AlertTriangle}
                         variant="rose"
@@ -321,99 +277,106 @@ function AppContent() {
                       />
                     </div>
 
-                    {/* Tarjeta de Próximas Sesiones Agendadas en Formato de Lista Pequeña */}
-                    <div className="bg-white dark:bg-slate-900 rounded-[16px] p-6 shadow-[0_4px_6px_rgba(0,0,0,0.05)] border border-slate-200/80 dark:border-slate-800 space-y-4">
+                    {/* Tarjeta de Próximas Sesiones Agendadas */}
+                    <div className="bg-white dark:bg-slate-900 rounded-[16px] p-6 shadow-[0_2px_4px_rgba(0,0,0,0.05)] border border-slate-200/90 dark:border-slate-800 space-y-4">
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-[#20B2AA]/15 text-[#20B2AA] flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-xl bg-[#EE7402]/15 text-[#EE7402] flex items-center justify-center">
                             <Clock className="w-4 h-4" />
                           </div>
                           <div>
                             <h2 className="font-heading font-semibold text-base text-slate-900 dark:text-white">
-                              Próximas Sesiones Agendadas
+                              Próximas Sesiones de Asesoría
                             </h2>
-                            <p className="text-xs text-[#64748B] dark:text-slate-400">
-                              Citas programadas en agenda para los próximos días
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Citas programadas en la agenda institucional
                             </p>
                           </div>
                         </div>
 
                         <button
                           onClick={() => setSeccionActiva('calendario')}
-                          className="text-xs font-semibold text-[#20B2AA] hover:underline flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-semibold text-[#EE7402] hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          <span>Ver calendario completo</span>
+                          <span>Ver agenda completa</span>
                           <ArrowRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
-                      {/* Lista pequeña y limpia (no vista de calendario grande) */}
                       <div className="space-y-3">
-                        {proximasSesionesResumen.map((ses) => (
-                          <div
-                            key={ses.id}
-                            className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-                              ses.urgente
-                                ? 'bg-[#FFF5F2] dark:bg-rose-950/20 border-[#FF7F50]/40'
-                                : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div
-                                className={`px-2.5 py-1.5 rounded-lg text-center font-mono shrink-0 ${
-                                  ses.urgente
-                                    ? 'bg-[#FF7F50] text-white font-bold'
-                                    : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600'
-                                }`}
-                              >
-                                <span className="block text-[10px] font-semibold uppercase">{ses.fecha.split(',')[0]}</span>
-                                <span className="block text-xs font-bold">{ses.hora}</span>
-                              </div>
-
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-heading font-semibold text-xs text-slate-900 dark:text-white">
-                                    {ses.alumno}
+                        {proximasSesionesResumen.length > 0 ? (
+                          proximasSesionesResumen.map((ses) => (
+                            <div
+                              key={ses.id}
+                              className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                                ses.urgente
+                                  ? 'bg-[#FFF7ED] dark:bg-rose-950/20 border-[#EE7402]/40'
+                                  : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div
+                                  className={`px-2.5 py-1.5 rounded-lg text-center font-mono shrink-0 ${
+                                    ses.urgente
+                                      ? 'bg-[#EE7402] text-white font-bold'
+                                      : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600'
+                                  }`}
+                                >
+                                  <span className="block text-[10px] font-semibold uppercase">
+                                    {ses.fecha.split(',')[0]}
                                   </span>
-                                  {ses.urgente && (
-                                    <span className="text-[9px] uppercase font-bold px-2 py-0.2 rounded-full bg-[#FF7F50] text-white">
-                                      Atención Urgente
-                                    </span>
-                                  )}
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                    {ses.carrera} &bull; {formatSemestre(ses.semestre)}
-                                  </span>
+                                  <span className="block text-xs font-bold">{ses.hora}</span>
                                 </div>
-                                <p className="text-[11px] text-[#64748B] dark:text-slate-400 mt-0.5 truncate">
-                                  {ses.tema}
-                                </p>
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-heading font-semibold text-xs text-slate-900 dark:text-white">
+                                      {ses.alumno}
+                                    </span>
+                                    {ses.urgente && (
+                                      <span className="text-[9px] uppercase font-bold px-2 py-0.2 rounded-full bg-[#EE7402] text-white">
+                                        Atención Prioritaria
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                      {ses.carrera} &bull; {formatSemestre(ses.semestre)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate">
+                                    {ses.tema}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                  {ses.modalidad === 'Virtual' ? (
+                                    <Video className="w-3 h-3 text-sky-500" />
+                                  ) : (
+                                    <MapPin className="w-3 h-3 text-[#EE7402]" />
+                                  )}
+                                  {ses.modalidad}
+                                </span>
+
+                                <button
+                                  onClick={() => setSeccionActiva('calendario')}
+                                  className="px-3 py-1 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600 transition-colors cursor-pointer"
+                                >
+                                  Ver Detalle
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                {ses.modalidad === 'Virtual' ? (
-                                  <Video className="w-3 h-3 text-sky-500" />
-                                ) : (
-                                  <MapPin className="w-3 h-3 text-emerald-500" />
-                                )}
-                                {ses.modalidad}
-                              </span>
-
-                              <button
-                                onClick={() => setSeccionActiva('calendario')}
-                                className="px-3 py-1 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600 transition-colors cursor-pointer"
-                              >
-                                Ver Detalle
-                              </button>
-                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-6 text-xs text-slate-400">
+                            No hay citas agendadas próximamente.
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Panel Derecho: Resumen Ejecutivo y Acción Principal */}
+                  {/* Panel Derecho Ejecutivo */}
                   <div className="lg:col-span-4">
                     <RightPanel
                       rolActivo={rolActivo}
@@ -431,21 +394,11 @@ function AppContent() {
                 </div>
               )}
 
-              {/* =================================================== */}
-              {/* VISTA 2: CALENDARIO Y SESIONES                      */}
-              {/* (calendario.component.html)                         */}
-              {/* Aquí se mueve toda la cuadrícula del calendario     */}
-              {/* visual de sesiones expandida sin distracciones      */}
-              {/* =================================================== */}
+              {/* 2. Agenda (Calendario) */}
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  {/* Cuadrícula Completa del Calendario Visual de Sesiones */}
-                  <VisualCalendarWidget
-                    citas={citas}
-                    onNuevaSesion={() => {}}
-                  />
+                  <VisualCalendarWidget citas={citas} onNuevaSesion={() => {}} />
 
-                  {/* Vista de Gestión y Detalle de Citas y Sesiones */}
                   <CalendarioSesionesView
                     rolActivo="TUTOR"
                     tutorActivo={tutorActivo}
@@ -455,12 +408,7 @@ function AppContent() {
                 </div>
               )}
 
-              {/* =================================================== */}
-              {/* VISTA 3: ALUMNOS / MI TUTORÍA                       */}
-              {/* (alumnos.component.html)                            */}
-              {/* Mueve aquí las tarjetas detalladas de los perfiles  */}
-              {/* (como Ana Lucía Morales con semestre y carrera)     */}
-              {/* =================================================== */}
+              {/* 3. Mis Tutorados (Directorio) */}
               {seccionActiva === 'tutorados' && (
                 <div className="animate-in fade-in duration-200">
                   <TutoradosDashboard
@@ -474,29 +422,22 @@ function AppContent() {
             </>
           )}
 
-          {/* ======================================================== */}
-          {/* VISTAS PARA EL ROL DE ALUMNO                             */}
-          {/* ======================================================== */}
+          {/* ====================================================== */}
+          {/* VISTAS EXCLUSIVAS DEL ALUMNO TUTORADO                  */}
+          {/* ====================================================== */}
           {seccionActiva !== 'perfil' && seccionActiva !== 'archivos' && rolActivo === 'ALUMNO' && (
             <>
-              {/* 1. Inicio / Dashboard o Mi Tutoría */}
+              {/* 1. Ver Información del Tutor */}
               {(seccionActiva === 'dashboard' || seccionActiva === 'tutorados') && (
                 <div className="max-w-6xl w-full mx-auto animate-in fade-in duration-200">
-                  <AlumnoPortalView
-                    estudianteActivo={estudianteActivo}
-                    onCambiarEstudiante={handleCambiarEstudianteConSesion}
-                    catalogoEstudiantes={catalogoEstudiantes}
-                  />
+                  <AlumnoPortalView estudianteActivo={estudianteActivo} />
                 </div>
               )}
 
-              {/* 2. Calendario y Sesiones */}
+              {/* 2. Mis Reuniones */}
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  <VisualCalendarWidget
-                    citas={citas}
-                    onNuevaSesion={() => {}}
-                  />
+                  <VisualCalendarWidget citas={citas} onNuevaSesion={() => {}} />
 
                   <CalendarioSesionesView
                     rolActivo="ALUMNO"
@@ -507,7 +448,7 @@ function AppContent() {
                 </div>
               )}
 
-              {/* 3. Mis Notas Personales (Vista Dedicada y Exclusiva) */}
+              {/* 3. Mis Notas Personales (Confidencial) */}
               {seccionActiva === 'notas' && (
                 <div className="animate-in fade-in duration-200">
                   <NotasPersonalesView />
@@ -517,43 +458,27 @@ function AppContent() {
           )}
         </main>
 
-        {/* Footer Institucional */}
-        <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 py-4 mt-auto text-xs text-[#64748B] dark:text-slate-400">
-          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="w-4 h-4 text-[#20B2AA]" />
-              <span>
-                <strong className="text-slate-800 dark:text-slate-200 font-heading">Tutoría Pro</strong> &bull; Portal de Acompañamiento Escolar
-              </span>
-            </div>
+        {/* Modales Globales */}
+        {rolActivo === 'TUTOR' && (
+          <>
+            <AsignarTutoradoModal
+              isOpen={modalAsignarAbierto}
+              onClose={() => setModalAsignarAbierto(false)}
+              tutorActivo={tutorActivo}
+              catalogoEstudiantes={catalogoEstudiantes}
+              onAsignacionExitosa={cargarDatos}
+            />
 
-            <div className="flex items-center gap-3 text-[11px] text-[#64748B]">
-              <span>Periodo Activo 2026-1</span>
-              <span>&bull;</span>
-              <span>Universidad Tecnológica</span>
-            </div>
-          </div>
-        </footer>
+            <DetalleTutoradoModal
+              asignacion={tutoradoSeleccionado}
+              onClose={() => setTutoradoSeleccionado(null)}
+              tutorActivo={tutorActivo}
+              onActualizacion={cargarDatos}
+            />
+          </>
+        )}
       </div>
-
-      {/* Modales de Gestión de Tutoría */}
-      <AsignarTutoradoModal
-        isOpen={modalAsignarAbierto}
-        onClose={() => setModalAsignarAbierto(false)}
-        tutorActivo={tutorActivo}
-        catalogoEstudiantes={catalogoEstudiantes}
-        onAsignacionExitosa={cargarDatos}
-      />
-
-
-      <DetalleTutoradoModal
-        asignacion={tutoradoSeleccionado}
-        onClose={() => setTutoradoSeleccionado(null)}
-        tutorActivo={tutorActivo}
-        onActualizacion={cargarDatos}
-      />
-      </div>
-    </ProtectedRoute>
+    </div>
   );
 }
 

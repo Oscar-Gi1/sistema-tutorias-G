@@ -7,7 +7,7 @@ import { ShieldAlert, ArrowRight, LogOut } from 'lucide-react';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: RolUsuario[];
-  onLoginRedirect?: (rol: RolUsuario) => void;
+  onLoginRedirect?: (rol: 'tutor' | 'alumno') => void;
   onIrInicioAutorizado?: () => void;
 }
 
@@ -17,11 +17,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   onLoginRedirect,
   onIrInicioAutorizado
 }) => {
-  const { verificarRuta, sesion, logout } = useAuth();
+  const { verificarRuta, sesion, isLoggedIn, logout } = useAuth();
   const validacion = verificarRuta(allowedRoles);
 
-  // 401 Unauthorized: Sin sesión o token JWT caducado -> Mostrar Pantalla de Login
-  if (validacion.statusCode === 401 || !sesion) {
+  // 401 Unauthorized o No Autenticado -> Mostrar Pantalla de Login UAT
+  if (!isLoggedIn || !sesion || validacion.statusCode === 401) {
     return <AuthView onLoginSuccess={onLoginRedirect} />;
   }
 
@@ -45,7 +45,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           {onIrInicioAutorizado && (
             <button
               onClick={onIrInicioAutorizado}
-              className="px-4 py-2 rounded-xl bg-[#20B2AA] hover:bg-[#1CA099] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[#EE7402] hover:bg-[#D96200] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
             >
               <span>Ir a mi panel autorizado</span>
               <ArrowRight className="w-3.5 h-3.5" />
