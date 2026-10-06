@@ -6,7 +6,8 @@ import {
   Tutor,
   EstudianteCatalogo,
   CategoriaArchivo,
-  EstadoRevisionArchivo
+  EstadoRevisionArchivo,
+  EditarArchivoPayload
 } from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
 import { AvatarWithFallback } from './AvatarWithFallback';
@@ -18,6 +19,7 @@ import {
   AlertTriangle,
   Clock,
   Trash2,
+  Edit3,
   Search,
   Filter,
   PlusCircle,
@@ -80,6 +82,20 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
   const [actDescripcion, setActDescripcion] = useState('');
   const [actFechaLimite, setActFechaLimite] = useState('2026-10-30');
   const [actEstudianteId, setActEstudianteId] = useState('TODOS');
+
+  // Estados para Edición de Archivos (Tutor y Alumno)
+  const [modalEditarAbierto, setModalEditarAbierto] = useState(false);
+  const [archivoEnEdicion, setArchivoEnEdicion] = useState<ArchivoSistema | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+  const [editCategoria, setEditCategoria] = useState<CategoriaArchivo>('Evidencia');
+  const [editComentarioTutor, setEditComentarioTutor] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  // Estados para Confirmación de Eliminación de Archivos
+  const [modalConfirmarBorradoAbierto, setModalConfirmarBorradoAbierto] = useState(false);
+  const [archivoParaBorrar, setArchivoParaBorrar] = useState<ArchivoSistema | null>(null);
+  const [borrando, setBorrando] = useState(false);
 
   const cargarDatos = async () => {
     setCargando(true);
@@ -243,10 +259,80 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
     document.body.removeChild(enlace);
   };
 
-  const handleEliminarArchivo = async (id: string) => {
-    if (confirm('¿Deseas eliminar este documento institucional de forma permanente?')) {
-      await tutoriaService.eliminarArchivo(id);
-      cargarDatos();
+  // Verificación de permisos según rol institucional
+  const puedeEditarOEliminar = (archivo: ArchivoSistema): boolean => {
+    if (rolActivo === 'TUTOR') return true;
+    return archivo.autorId === estudianteActivo.id || archivo.autorRol === 'TUTORADO';
+  };
+
+  // Abrir modal de edición con datos precargados
+  const handleAbrirEditar = (archivo: ArchivoSistema) => {
+    setArchivoEnEdicion(archivo);
+    setEditNombre(archivo.nombre);
+    setEditDescripcion(archivo.descripcion || '');
+    setEditCategoria(archivo.categoria);
+    setEditComentarioTutor(archivo.comentarioTutor || '');
+    setModalEditarAbierto(true);
+  };
+
+  // Guardar cambios editados en el archivo
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!archivoEnEdicion) return;
+    setGuardandoEdicion(true);
+
+    const payload: EditarArchivoPayload = {
+      archivoId: archivoEnEdicion.id,
+      nombre: editNombre.trim() || archivoEnEdicion.nombre,
+      descripcion: editDescripcion.trim(),
+      categoria: editCategoria,
+      comentarioTutor: rolActivo === 'TUTOR' ? editComentarioTutor.trim() : undefined
+    };
+
+    const res = await tutoriaService.editarArchivo(payload, {
+      id: rolActivo === 'TUTOR' ? tutorActivo.id : estudianteActivo.id,
+      rol: rolActivo === 'TUTOR' ? 'TUTOR' : 'TUTORADO'
+    });
+
+    setGuardandoEdicion(false);
+
+    if (res.success) {
+      setMensajeAlerta({ texto: res.message, tipo: 'ok' });
+      setModalEditarAbierto(false);
+      setArchivoEnEdicion(null);
+      await cargarDatos();
+      setTimeout(() => setMensajeAlerta(null), 3500);
+    } else {
+      setMensajeAlerta({ texto: res.message, tipo: 'error' });
+    }
+  };
+
+  // Abrir modal de confirmación antes de borrar
+  const handleAbrirConfirmarBorrado = (archivo: ArchivoSistema) => {
+    setArchivoParaBorrar(archivo);
+    setModalConfirmarBorradoAbierto(true);
+  };
+
+  // Ejecutar eliminación confirmada con persistencia
+  const handleConfirmarBorrado = async () => {
+    if (!archivoParaBorrar) return;
+    setBorrando(true);
+
+    const res = await tutoriaService.eliminarArchivo(archivoParaBorrar.id, {
+      id: rolActivo === 'TUTOR' ? tutorActivo.id : estudianteActivo.id,
+      rol: rolActivo === 'TUTOR' ? 'TUTOR' : 'TUTORADO'
+    });
+
+    setBorrando(false);
+
+    if (res.success) {
+      setMensajeAlerta({ texto: res.message, tipo: 'ok' });
+      setModalConfirmarBorradoAbierto(false);
+      setArchivoParaBorrar(null);
+      await cargarDatos();
+      setTimeout(() => setMensajeAlerta(null), 3500);
+    } else {
+      setMensajeAlerta({ texto: res.message, tipo: 'error' });
     }
   };
 
@@ -531,7 +617,7 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                         </td>
 
                         <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => handleDescargar(archivo)}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -548,16 +634,27 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                                   setComentarioRevision(archivo.comentarioTutor || '');
                                   setModalRevisarAbierto(true);
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-[#EE7402]/10 hover:bg-[#EE7402] hover:text-white text-[#EE7402] text-[11px] font-semibold transition-colors cursor-pointer"
+                                className="px-2 py-1 rounded-lg bg-[#EE7402]/10 hover:bg-[#EE7402] hover:text-white text-[#EE7402] text-[11px] font-semibold transition-colors cursor-pointer"
+                                title="Revisar evidencia y retroalimentar"
                               >
                                 Revisar
                               </button>
                             )}
 
-                            {rolActivo === 'TUTOR' && (
+                            {puedeEditarOEliminar(archivo) && (
                               <button
-                                onClick={() => handleEliminarArchivo(archivo.id)}
-                                className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                onClick={() => handleAbrirEditar(archivo)}
+                                className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-[#EE7402] hover:bg-[#EE7402]/10 dark:hover:bg-[#EE7402]/20 transition-colors cursor-pointer"
+                                title="Editar nombre, descripción o comentarios"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            {puedeEditarOEliminar(archivo) && (
+                              <button
+                                onClick={() => handleAbrirConfirmarBorrado(archivo)}
+                                className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                                 title="Eliminar archivo"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -950,6 +1047,172 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4: EDITAR ARCHIVO / DESCRIPCIÓN / COMENTARIOS       */}
+      {/* ========================================================= */}
+      {modalEditarAbierto && archivoEnEdicion && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200/90 dark:border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#EE7402]/15 text-[#EE7402] flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-sm text-slate-900 dark:text-white">
+                    Editar Información del Documento
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Modificar nombre, descripción o retroalimentación
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setModalEditarAbierto(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarEdicion} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Nombre del Archivo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editNombre}
+                  onChange={(e) => setEditNombre(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EE7402]/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Categoría del Documento
+                </label>
+                <select
+                  value={editCategoria}
+                  onChange={(e) => setEditCategoria(e.target.value as CategoriaArchivo)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EE7402]/30 cursor-pointer"
+                >
+                  <option value="Evidencia">Evidencia de Tutoría</option>
+                  <option value="Material de Apoyo">Material de Apoyo</option>
+                  <option value="Tarea / Actividad">Tarea / Actividad</option>
+                  <option value="Documento Institucional">Documento Institucional UAT</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Descripción o Notas del Documento
+                </label>
+                <textarea
+                  rows={3}
+                  value={editDescripcion}
+                  onChange={(e) => setEditDescripcion(e.target.value)}
+                  placeholder="Escribe una breve descripción del contenido de este documento..."
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EE7402]/30 resize-none"
+                />
+              </div>
+
+              {rolActivo === 'TUTOR' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Comentarios del Tutor / Retroalimentación
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editComentarioTutor}
+                    onChange={(e) => setEditComentarioTutor(e.target.value)}
+                    placeholder="Observaciones o retroalimentación para el alumno..."
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EE7402]/30 resize-none"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalEditarAbierto(false)}
+                  className="px-3.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoEdicion}
+                  className="px-4 py-2 bg-[#EE7402] hover:bg-[#D96200] text-white rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {guardandoEdicion ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 5: CONFIRMAR ELIMINACIÓN DE ARCHIVO                 */}
+      {/* ========================================================= */}
+      {modalConfirmarBorradoAbierto && archivoParaBorrar && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200/90 dark:border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-sm text-slate-900 dark:text-white">
+                  Confirmar Eliminación de Archivo
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Esta acción eliminará el archivo de forma permanente
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-white truncate">
+                <FileText className="w-4 h-4 text-[#EE7402] shrink-0" />
+                <span className="truncate">{archivoParaBorrar.nombre}</span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <span>{archivoParaBorrar.tamanoFormateado}</span>
+                <span>&bull;</span>
+                <span>Subido por {archivoParaBorrar.autorNombre}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar este archivo? Una vez eliminado, no podrá recuperarse del almacenamiento institucional.
+            </p>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalConfirmarBorradoAbierto(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarBorrado}
+                disabled={borrando}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{borrando ? 'Eliminando...' : 'Eliminar Definitivamente'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

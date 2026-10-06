@@ -7,10 +7,12 @@ import {
   EstudianteCatalogo,
   CitaAsesoria,
   SolicitarAsesoriaPayload,
+  AgendarSesionGrupalPayload,
   Tutor,
   ArchivoSistema,
   SubirArchivoPayload,
   RevisarArchivoPayload,
+  EditarArchivoPayload,
   ActividadAsignada,
   CrearActividadPayload,
   NotaPersonalItem,
@@ -129,6 +131,25 @@ export const CITAS_INICIALES: CitaAsesoria[] = [
     estado: 'Pendiente',
     enlaceVirtual: 'https://meet.google.com/xyz-tutor-2026',
     motivoDetalle: 'Dudas sobre carga horaria y requisitos de materias del 3er semestre.'
+  },
+  {
+    id: 'cita-grupal-001',
+    estudianteId: 'GRUPAL',
+    estudiantesIds: ['est-101', 'est-102', 'est-103'],
+    tutorId: 'tutor-001',
+    fecha: '2026-10-16',
+    hora: '12:00 PM',
+    tema: 'Taller Grupal: Preparación para Exámenes Parciales y Técnicas de Estudio',
+    modalidad: 'Presencial',
+    estado: 'Confirmada',
+    lugar: 'Aula Magna de Ingeniería, Sala 3',
+    motivoDetalle: 'Sesión grupal tutorial para revisión de calendario de exámenes y recomendaciones académicas.',
+    esGrupal: true,
+    confirmaciones: {
+      'est-101': 'Confirmada',
+      'est-102': 'Confirmada',
+      'est-103': 'Pendiente'
+    }
   }
 ];
 
@@ -726,7 +747,9 @@ class TutoriaBackendService {
       tutor = TUTORES_DEMO.find(t => t.id === asignacion.tutorId) || null;
     }
 
-    const citasEstudiante = this.citas.filter(c => c.estudianteId === estudianteId);
+    const citasEstudiante = this.citas.filter(
+      c => c.estudianteId === estudianteId || (c.estudiantesIds && c.estudiantesIds.includes(estudianteId))
+    );
 
     const res = {
       success: true,
@@ -742,6 +765,153 @@ class TutoriaBackendService {
 
     this.logHttp('GET', `/api/alumno/mi-tutoria?estudianteId=${estudianteId}`, 200, tutor?.id || 'tutor-001', res);
     return res;
+  }
+
+  /**
+   * ENDPOINT VISTA TUTOR: GET /api/tutor/citas
+   * Recupera todas las sesiones (individuales y grupales) del tutor
+   */
+  public async getCitasPorTutor(tutorId: string): Promise<ApiResponse<CitaAsesoria[]>> {
+    const citasTutor = this.citas.filter(c => c.tutorId === tutorId);
+    return {
+      success: true,
+      message: `Se recuperaron ${citasTutor.length} citas de asesoría.`,
+      data: citasTutor,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: POST /api/tutor/sesion-grupal
+   * Agendar sesión grupal de un tutor con múltiples tutorados
+   */
+  public async agendarSesionGrupal(payload: AgendarSesionGrupalPayload): Promise<ApiResponse<CitaAsesoria>> {
+    if (!payload.tema.trim() || !payload.fecha || !payload.hora) {
+      return {
+        success: false,
+        message: 'Debe especificar el tema, la fecha y la hora para la sesión grupal.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    if (!payload.estudiantesIds || payload.estudiantesIds.length === 0) {
+      return {
+        success: false,
+        message: 'Debe seleccionar al menos un estudiante tutorado para la sesión grupal.',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const confirmaciones: Record<string, 'Confirmada' | 'Pendiente' | 'Rechazada'> = {};
+    payload.estudiantesIds.forEach(id => {
+      confirmaciones[id] = 'Pendiente';
+    });
+
+    const nuevaCita: CitaAsesoria = {
+      id: 'cita-grupal-' + Date.now().toString(36),
+      estudianteId: 'GRUPAL',
+      estudiantesIds: payload.estudiantesIds,
+      tutorId: payload.tutorId,
+      fecha: payload.fecha,
+      hora: payload.hora,
+      tema: payload.tema.trim(),
+      modalidad: payload.modalidad,
+      estado: 'Confirmada',
+      lugar: payload.lugar || (payload.modalidad === 'Presencial' ? 'Aula Magna de Tutorías / Cubículo' : undefined),
+      enlaceVirtual: payload.enlaceVirtual || (payload.modalidad === 'Virtual' ? 'https://meet.google.com/tutoria-grupal-uat' : undefined),
+      motivoDetalle: payload.motivoDetalle?.trim(),
+      esGrupal: true,
+      confirmaciones
+    };
+
+    this.citas.unshift(nuevaCita);
+    this.saveCitas();
+
+    return {
+      success: true,
+      message: `Sesión grupal agendada exitosamente con ${payload.estudiantesIds.length} tutorados participantes.`,
+      data: nuevaCita,
+      statusCode: 201,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: PATCH /api/tutor/sesion-grupal/:id/participantes
+   * Permite al tutor agregar o quitar tutorados de una sesión grupal existente
+   */
+  public async actualizarParticipantesSesionGrupal(
+    citaId: string,
+    nuevosEstudiantesIds: string[]
+  ): Promise<ApiResponse<CitaAsesoria>> {
+    const idx = this.citas.findIndex(c => c.id === citaId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Sesión no encontrada.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const cita = this.citas[idx];
+    const prevConf = cita.confirmaciones || {};
+    const nuevaConf: Record<string, 'Confirmada' | 'Pendiente' | 'Rechazada'> = {};
+    nuevosEstudiantesIds.forEach(id => {
+      nuevaConf[id] = prevConf[id] || 'Pendiente';
+    });
+
+    cita.estudiantesIds = nuevosEstudiantesIds;
+    cita.confirmaciones = nuevaConf;
+    this.saveCitas();
+
+    return {
+      success: true,
+      message: `Participantes de la sesión grupal actualizados (${nuevosEstudiantesIds.length} tutorados).`,
+      data: cita,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * ENDPOINT: PATCH /api/alumno/sesion-grupal/:id/respuesta
+   * Permite a un tutorado confirmar o rechazar su asistencia a la sesión grupal
+   */
+  public async responderCitaGrupalComoAlumno(
+    citaId: string,
+    estudianteId: string,
+    respuesta: 'Confirmada' | 'Rechazada'
+  ): Promise<ApiResponse<CitaAsesoria>> {
+    const idx = this.citas.findIndex(c => c.id === citaId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Sesión no encontrada.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const cita = this.citas[idx];
+    if (!cita.confirmaciones) {
+      cita.confirmaciones = {};
+    }
+    cita.confirmaciones[estudianteId] = respuesta;
+    this.saveCitas();
+
+    return {
+      success: true,
+      message: respuesta === 'Confirmada'
+        ? 'Has confirmado tu asistencia a la sesión grupal de tutoría.'
+        : 'Has declinado tu asistencia a la sesión grupal.',
+      data: cita,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**
@@ -945,9 +1115,67 @@ class TutoriaBackendService {
   }
 
   /**
+   * ENDPOINT: PATCH /api/archivos/:id/editar
+   * Permite editar la descripción, nombre, categoría o comentarios de un archivo
+   */
+  public async editarArchivo(
+    payload: EditarArchivoPayload,
+    usuario?: { id: string; rol: 'TUTOR' | 'TUTORADO' }
+  ): Promise<ApiResponse<ArchivoSistema>> {
+    const idx = this.archivos.findIndex(a => a.id === payload.archivoId);
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Archivo no encontrado.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const archivo = this.archivos[idx];
+
+    // Permisos: Si es tutorado, sólo puede editar archivos donde él sea el autor
+    if (usuario && usuario.rol === 'TUTORADO' && archivo.autorId !== usuario.id) {
+      return {
+        success: false,
+        message: 'Acceso denegado: Sólo puedes editar los archivos que tú mismo has subido.',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    if (payload.nombre && payload.nombre.trim()) {
+      archivo.nombre = payload.nombre.trim();
+    }
+    if (payload.descripcion !== undefined) {
+      archivo.descripcion = payload.descripcion.trim();
+    }
+    if (payload.categoria) {
+      archivo.categoria = payload.categoria;
+    }
+    if (payload.comentarioTutor !== undefined && (!usuario || usuario.rol === 'TUTOR')) {
+      archivo.comentarioTutor = payload.comentarioTutor.trim();
+      archivo.fechaRevision = new Date().toISOString();
+    }
+
+    this.saveArchivos();
+
+    return {
+      success: true,
+      message: `Archivo "${archivo.nombre}" actualizado correctamente en el almacenamiento institucional.`,
+      data: archivo,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
    * ENDPOINT: DELETE /api/archivos/:id
    */
-  public async eliminarArchivo(archivoId: string): Promise<ApiResponse<{ id: string }>> {
+  public async eliminarArchivo(
+    archivoId: string,
+    usuario?: { id: string; rol: 'TUTOR' | 'TUTORADO' }
+  ): Promise<ApiResponse<{ id: string }>> {
     const idx = this.archivos.findIndex(a => a.id === archivoId);
     if (idx === -1) {
       return {
@@ -958,12 +1186,25 @@ class TutoriaBackendService {
       };
     }
 
+    const archivo = this.archivos[idx];
+
+    // Permisos: Si es tutorado, sólo puede eliminar archivos donde él sea el autor
+    if (usuario && usuario.rol === 'TUTORADO' && archivo.autorId !== usuario.id) {
+      return {
+        success: false,
+        message: 'Acceso denegado: Sólo puedes eliminar los archivos que tú mismo has subido.',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const nombreEliminado = archivo.nombre;
     this.archivos.splice(idx, 1);
     this.saveArchivos();
 
     return {
       success: true,
-      message: 'Archivo eliminado correctamente del almacenamiento persistente.',
+      message: `Archivo "${nombreEliminado}" eliminado correctamente del almacenamiento persistente.`,
       data: { id: archivoId },
       statusCode: 200,
       timestamp: new Date().toISOString()
