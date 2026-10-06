@@ -267,21 +267,37 @@ class TutoriaBackendService {
     this.notify();
   }
 
-  private saveArchivos() {
-    // Para localStorage guardamos versión ligera si es muy pesado
+  private async saveArchivosAsync(): Promise<void> {
     try {
-      const ligero = this.archivos.map(a => {
-        if (a.contenidoDataUrl && a.contenidoDataUrl.length > 50000) {
-          return { ...a, contenidoDataUrl: '[ALMACENADO_EN_INDEXEDDB]' };
-        }
-        return a;
-      });
-      localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(ligero));
-    } catch {}
-    // IndexedDB almacena el contenido completo binario / DataUrl de forma persistente
-    dbStorage.putMany('archivos', this.archivos).catch(() => {});
+      localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(this.archivos));
+    } catch {
+      try {
+        const ligero = this.archivos.map(a => {
+          if (a.contenidoDataUrl && a.contenidoDataUrl.length > 25000) {
+            return { ...a, contenidoDataUrl: '' };
+          }
+          return a;
+        });
+        localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(ligero));
+      } catch {}
+    }
+
+    try {
+      await dbStorage.clear('archivos');
+      if (this.archivos.length > 0) {
+        await dbStorage.putMany('archivos', this.archivos);
+      }
+    } catch (e) {
+      console.warn('Error al guardar archivos en IndexedDB:', e);
+    }
+
     this.notify();
   }
+
+  private saveArchivos() {
+    this.saveArchivosAsync().catch(() => {});
+  }
+
 
   private saveActividades() {
     try {
@@ -815,6 +831,18 @@ class TutoriaBackendService {
     categoria?: string;
     rol?: string;
   }): Promise<ApiResponse<ArchivoSistema[]>> {
+    // Si la memoria está vacía, intentar hidratar de IndexedDB
+    if (this.archivos.length === 0) {
+      try {
+        const dbArchivos = await dbStorage.getAll<ArchivoSistema>('archivos');
+        if (dbArchivos && dbArchivos.length > 0) {
+          this.archivos = dbArchivos;
+        }
+      } catch (e) {
+        console.warn('Error al leer archivos de IndexedDB:', e);
+      }
+    }
+
     let res = [...this.archivos];
 
     if (filtros?.tutoradoId && filtros.tutoradoId !== 'TODOS') {
@@ -891,7 +919,7 @@ class TutoriaBackendService {
     };
 
     this.archivos.unshift(nuevoArchivo);
-    this.saveArchivos();
+    await this.saveArchivosAsync();
 
     const okRes: ApiResponse<ArchivoSistema> = {
       success: true,
@@ -930,7 +958,7 @@ class TutoriaBackendService {
     this.archivos[idx].estadoRevision = payload.estadoRevision;
     this.archivos[idx].comentarioTutor = payload.comentarioTutor?.trim();
     this.archivos[idx].fechaRevision = new Date().toISOString();
-    this.saveArchivos();
+    await this.saveArchivosAsync();
 
     const okRes: ApiResponse<ArchivoSistema> = {
       success: true,
@@ -948,7 +976,7 @@ class TutoriaBackendService {
    * ENDPOINT: DELETE /api/archivos/:id
    */
   public async eliminarArchivo(archivoId: string): Promise<ApiResponse<{ id: string }>> {
-    const idx = this.archivos.findIndex(a => a.id === archivoId);
+    const idx = this.archivos.findIndex(a => String(a.id) === String(archivoId));
     if (idx === -1) {
       return {
         success: false,
@@ -959,7 +987,8 @@ class TutoriaBackendService {
     }
 
     this.archivos.splice(idx, 1);
-    this.saveArchivos();
+    await dbStorage.delete('archivos', archivoId);
+    await this.saveArchivosAsync();
 
     return {
       success: true,

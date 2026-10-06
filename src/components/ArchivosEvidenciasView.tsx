@@ -9,6 +9,12 @@ import {
   EstadoRevisionArchivo
 } from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
+import {
+  dataUrlToBlob,
+  abrirDocumentoEnPestana,
+  descargarDocumento,
+  decodeTextFromDataUrl
+} from '../utils/tutoriaUtils';
 import { AvatarWithFallback } from './AvatarWithFallback';
 import {
   UploadCloud,
@@ -29,7 +35,16 @@ import {
   ExternalLink,
   ShieldCheck,
   RefreshCw,
-  Database
+  Database,
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Copy,
+  Check,
+  FileSpreadsheet,
+  FileArchive,
+  FileCode
 } from 'lucide-react';
 
 interface ArchivosEvidenciasViewProps {
@@ -58,6 +73,20 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
   const [modalActividadAbierto, setModalActividadAbierto] = useState(false);
   const [modalRevisarAbierto, setModalRevisarAbierto] = useState(false);
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<ArchivoSistema | null>(null);
+
+  // Modal Visor de Documentos
+  const [modalVisorAbierto, setModalVisorAbierto] = useState(false);
+  const [archivoAVisualizar, setArchivoAVisualizar] = useState<ArchivoSistema | null>(null);
+  const [blobUrlActual, setBlobUrlActual] = useState<string>('');
+  const [textoDecodificado, setTextoDecodificado] = useState<string | null>(null);
+  const [zoomImagen, setZoomImagen] = useState<number>(100);
+  const [copiadoTexto, setCopiadoTexto] = useState(false);
+
+  // Modal de Confirmación de Eliminación (reemplaza window.confirm bloqueado)
+  const [modalEliminarAbierto, setModalEliminarAbierto] = useState(false);
+  const [archivoAEliminar, setArchivoAEliminar] = useState<ArchivoSistema | null>(null);
+  const [eliminandoArchivo, setEliminandoArchivo] = useState(false);
+
 
   // Formulario Subir Archivo
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -218,21 +247,83 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
     }
   };
 
-  const handleDescargar = (archivo: ArchivoSistema) => {
-    const enlace = document.createElement('a');
-    enlace.href = archivo.contenidoDataUrl;
-    enlace.download = archivo.nombre;
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
+  const handleAbrirVisor = (archivo: ArchivoSistema) => {
+    setArchivoAVisualizar(archivo);
+    setZoomImagen(100);
+    setCopiadoTexto(false);
+
+    // Intentar decodificar como texto si es archivo de texto, código, csv, markdown o json
+    const esTexto =
+      archivo.tipo.startsWith('text/') ||
+      archivo.nombre.match(/\.(txt|md|csv|json|js|ts|py|sql|html|css|xml|log|ini|env)$/i);
+
+    if (esTexto && archivo.contenidoDataUrl) {
+      const decoded = decodeTextFromDataUrl(archivo.contenidoDataUrl);
+      setTextoDecodificado(decoded);
+    } else {
+      setTextoDecodificado(null);
+    }
+
+    const blob = dataUrlToBlob(archivo.contenidoDataUrl);
+    if (blob) {
+      const url = URL.createObjectURL(blob);
+      setBlobUrlActual(url);
+    } else {
+      setBlobUrlActual(archivo.contenidoDataUrl || '');
+    }
+    setModalVisorAbierto(true);
   };
 
-  const handleEliminarArchivo = async (id: string) => {
-    if (confirm('¿Eliminar este archivo de forma permanente?')) {
-      await tutoriaService.eliminarArchivo(id);
-      cargarDatos();
+  const handleCerrarVisor = () => {
+    setModalVisorAbierto(false);
+    if (blobUrlActual && blobUrlActual.startsWith('blob:')) {
+      URL.revokeObjectURL(blobUrlActual);
     }
+    setBlobUrlActual('');
+    setArchivoAVisualizar(null);
+    setTextoDecodificado(null);
+    setZoomImagen(100);
   };
+
+  const handlePedirEliminar = (archivo: ArchivoSistema) => {
+    setArchivoAEliminar(archivo);
+    setModalEliminarAbierto(true);
+  };
+
+  const handleEjecutarEliminacion = async () => {
+    if (!archivoAEliminar) return;
+    const targetId = archivoAEliminar.id;
+    setEliminandoArchivo(true);
+
+    // Actualización inmediata en el estado para respuesta instantánea al usuario
+    setArchivos((prev) => prev.filter((a) => a.id !== targetId));
+
+    const res = await tutoriaService.eliminarArchivo(targetId);
+    setEliminandoArchivo(false);
+    setModalEliminarAbierto(false);
+    setArchivoAEliminar(null);
+
+    if (res.success) {
+      setMensajeAlerta({ texto: 'Archivo eliminado correctamente del almacenamiento persistente.', tipo: 'ok' });
+    } else {
+      setMensajeAlerta({ texto: res.message || 'Error al eliminar el archivo.', tipo: 'error' });
+    }
+    setTimeout(() => setMensajeAlerta(null), 3000);
+    await cargarDatos();
+  };
+
+  const handleCopiarAlPortapapeles = (texto: string) => {
+    if (!texto) return;
+    navigator.clipboard.writeText(texto).then(() => {
+      setCopiadoTexto(true);
+      setTimeout(() => setCopiadoTexto(false), 2000);
+    });
+  };
+
+  const handleDescargar = (archivo: ArchivoSistema) => {
+    descargarDocumento(archivo.contenidoDataUrl, archivo.nombre);
+  };
+
 
   const handleVaciarDatosMock = () => {
     if (
@@ -505,7 +596,11 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                         </span>
                       </div>
 
-                      <h3 className="font-heading font-semibold text-sm text-slate-900 dark:text-white mt-1 break-all">
+                      <h3
+                        onClick={() => handleAbrirVisor(archivo)}
+                        className="font-heading font-semibold text-sm text-slate-900 dark:text-white mt-1 break-all cursor-pointer hover:text-[#20B2AA] dark:hover:text-[#20B2AA] transition-colors"
+                        title="Haz clic para abrir este documento"
+                      >
                         {archivo.nombre}
                       </h3>
 
@@ -542,10 +637,22 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                   </div>
 
                   {/* Botones de acción */}
-                  <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                  <div className="flex items-center gap-2 self-end md:self-center shrink-0 flex-wrap">
                     <button
+                      type="button"
+                      onClick={() => handleAbrirVisor(archivo)}
+                      className="px-3 py-1.5 bg-[#20B2AA] hover:bg-[#1CA099] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                      title="Abrir y previsualizar documento en pantalla"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Abrir</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => handleDescargar(archivo)}
                       className="px-3 py-1.5 bg-[#20B2AA]/10 hover:bg-[#20B2AA] hover:text-white text-[#0E7470] dark:text-[#20B2AA] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Descargar copia del archivo"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Descargar</span>
@@ -553,6 +660,7 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
 
                     {rolActivo === 'TUTOR' && (
                       <button
+                        type="button"
                         onClick={() => {
                           setArchivoSeleccionado(archivo);
                           setNuevoEstadoRevision(archivo.estadoRevision);
@@ -567,9 +675,10 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
                     )}
 
                     <button
-                      onClick={() => handleEliminarArchivo(archivo.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar archivo"
+                      type="button"
+                      onClick={() => handlePedirEliminar(archivo)}
+                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar este archivo permanentemente"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -578,6 +687,7 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
               );
             })
           ) : (
+
             <div className="text-center py-12 bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-3">
               <FolderOpen className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
               <h3 className="font-heading font-semibold text-sm text-slate-900 dark:text-white">
@@ -1001,6 +1111,285 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4: VISOR DE DOCUMENTOS Y EVIDENCIAS                 */}
+      {/* ========================================================= */}
+      {modalVisorAbierto && archivoAVisualizar && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+            {/* Cabecera del visor */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-950/40">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-[#20B2AA] flex items-center justify-center shrink-0">
+                  {archivoAVisualizar.tipo.startsWith('image/') || archivoAVisualizar.nombre.match(/\.(png|jpg|jpeg|webp|gif|svg)$/i) ? (
+                    <Eye className="w-5 h-5 text-[#20B2AA]" />
+                  ) : archivoAVisualizar.tipo === 'application/pdf' || archivoAVisualizar.nombre.endsWith('.pdf') ? (
+                    <FileText className="w-5 h-5 text-rose-500" />
+                  ) : archivoAVisualizar.nombre.match(/\.(xlsx|xls|csv)$/i) ? (
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  ) : archivoAVisualizar.nombre.match(/\.(zip|rar|7z|tar|gz)$/i) ? (
+                    <FileArchive className="w-5 h-5 text-purple-600" />
+                  ) : archivoAVisualizar.nombre.match(/\.(js|ts|py|sql|html|css|json|md|txt)$/i) ? (
+                    <FileCode className="w-5 h-5 text-amber-600" />
+                  ) : (
+                    <FileText className="w-5 h-5 text-[#20B2AA]" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-heading font-bold text-sm text-slate-900 dark:text-white truncate">
+                      {archivoAVisualizar.nombre}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#20B2AA]/15 text-[#0E7470] dark:text-[#20B2AA]">
+                      {archivoAVisualizar.categoria}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {archivoAVisualizar.tamanoFormateado} &bull; Subido por <strong>{archivoAVisualizar.autorNombre}</strong> ({archivoAVisualizar.autorRol}) &bull; {new Date(archivoAVisualizar.fechaSubida).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleDescargar(archivoAVisualizar)}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#20B2AA] hover:bg-[#1CA099] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="Descargar y guardar copia original en tu equipo"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar / Abrir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCerrarVisor}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Cerrar visor"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido / Vista Previa del Documento */}
+            <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-100/50 dark:bg-slate-950 flex flex-col items-center justify-center min-h-[380px]">
+              {/* CASO 1: IMÁGENES */}
+              {archivoAVisualizar.tipo.startsWith('image/') || archivoAVisualizar.nombre.match(/\.(png|jpg|jpeg|webp|gif|svg)$/i) ? (
+                <div className="w-full flex flex-col items-center gap-3">
+                  {/* Controles de zoom para imágenes */}
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl shadow-xs text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <button
+                      type="button"
+                      onClick={() => setZoomImagen((prev) => Math.max(50, prev - 25))}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
+                      title="Alejar"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-mono text-[11px] px-1">{zoomImagen}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setZoomImagen((prev) => Math.min(200, prev + 25))}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
+                      title="Acercar"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setZoomImagen(100)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer ml-1 text-slate-400 hover:text-slate-700"
+                      title="Restablecer tamaño"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="max-h-[64vh] overflow-auto flex items-center justify-center p-2 w-full">
+                    <img
+                      src={blobUrlActual || archivoAVisualizar.contenidoDataUrl}
+                      alt={archivoAVisualizar.nombre}
+                      style={{ transform: `scale(${zoomImagen / 100})`, transformOrigin: 'center center' }}
+                      className="max-h-[58vh] max-w-full rounded-xl object-contain shadow-md border border-slate-200 dark:border-slate-800 transition-transform duration-150"
+                    />
+                  </div>
+                </div>
+              ) : textoDecodificado !== null ? (
+                /* CASO 2: TEXTO / CÓDIGO / MARKDOWN / CSV / JSON DECODIFICADO */
+                <div className="w-full max-w-3xl flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
+                      <FileCode className="w-4 h-4 text-[#20B2AA]" />
+                      <span>Contenido de Texto del Archivo</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopiarAlPortapapeles(textoDecodificado)}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiadoTexto ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiadoTexto ? 'Copiado' : 'Copiar Texto'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-4 overflow-auto max-h-[60vh] font-mono text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap select-text bg-slate-50/50 dark:bg-slate-950/60">
+                    {textoDecodificado || '(El archivo no contiene texto legible)'}
+                  </pre>
+                </div>
+              ) : archivoAVisualizar.tipo === 'application/pdf' || archivoAVisualizar.nombre.endsWith('.pdf') ? (
+                /* CASO 3: DOCUMENTO PDF */
+                <div className="w-full flex flex-col items-center gap-3">
+                  <div className="w-full bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium">
+                      <FileText className="w-4 h-4 text-rose-500" />
+                      <span>Documento PDF: {archivoAVisualizar.nombre}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDescargar(archivoAVisualizar)}
+                      className="px-3 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Abrir en Visor PDF Nativo</span>
+                    </button>
+                  </div>
+
+                  <iframe
+                    src={blobUrlActual || archivoAVisualizar.contenidoDataUrl}
+                    title={archivoAVisualizar.nombre}
+                    className="w-full h-[62vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
+                  />
+                </div>
+              ) : (
+                /* CASO 4: DOCUMENTOS OFFICE (WORD, EXCEL, POWERPOINT) Y COMPRIMIDOS */
+                <div className="max-w-lg w-full bg-white dark:bg-slate-900 p-7 rounded-2xl border border-slate-200 dark:border-slate-800 text-center space-y-5 shadow-sm animate-in zoom-in-95 duration-150">
+                  <div className="w-16 h-16 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-[#20B2AA] flex items-center justify-center mx-auto">
+                    {archivoAVisualizar.nombre.match(/\.(xlsx|xls)$/i) ? (
+                      <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
+                    ) : archivoAVisualizar.nombre.match(/\.(zip|rar|7z)$/i) ? (
+                      <FileArchive className="w-8 h-8 text-purple-600" />
+                    ) : (
+                      <FileText className="w-8 h-8 text-[#20B2AA]" />
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-heading font-bold text-base text-slate-900 dark:text-white break-all">
+                      {archivoAVisualizar.nombre}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {archivoAVisualizar.categoria} &bull; {archivoAVisualizar.tamanoFormateado} &bull; Formato: {archivoAVisualizar.tipo || 'Documento binario'}
+                    </p>
+                  </div>
+
+                  {archivoAVisualizar.descripcion && (
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-left">
+                      <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">Descripción de la entrega:</span>
+                      <p className="text-xs text-slate-700 dark:text-slate-300 italic">
+                        &ldquo;{archivoAVisualizar.descripcion}&rdquo;
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 rounded-xl p-3 text-left">
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                      💡 <strong>Apertura de Documentos:</strong> Los archivos de Microsoft Office (.docx, .xlsx, .pptx) y comprimidos se descargan y abren de forma nativa en tu suite ofimática preferida con 100% de fidelidad tipográfica y de fórmulas.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDescargar(archivoAVisualizar)}
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#20B2AA] hover:bg-[#1CA099] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Descargar y Abrir en mi Equipo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopiarAlPortapapeles(archivoAVisualizar.nombre)}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiadoTexto ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiadoTexto ? 'Copiado' : 'Copiar Nombre'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Pie del visor con comentarios del tutor si existen */}
+            {archivoAVisualizar.comentarioTutor && (
+              <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-xs">
+                <div className="flex items-center gap-2 font-semibold text-[#0E7470] dark:text-[#20B2AA] mb-1">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Retroalimentación del Tutor ({archivoAVisualizar.estadoRevision}):</span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 italic">
+                  &ldquo;{archivoAVisualizar.comentarioTutor}&rdquo;
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 5: CONFIRMAR ELIMINACIÓN DE ARCHIVO (SIN WINDOW.CONFIRM) */}
+      {/* ========================================================= */}
+      {modalEliminarAbierto && archivoAEliminar && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="font-heading font-bold text-base text-slate-900 dark:text-white">
+                ¿Eliminar archivo permanentemente?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Se borrará del almacenamiento persistente de forma irreversible.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+              <p className="font-semibold text-slate-900 dark:text-white truncate">
+                {archivoAEliminar.nombre}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {archivoAEliminar.categoria} &bull; {archivoAEliminar.tamanoFormateado} &bull; Subido por {archivoAEliminar.autorNombre}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalEliminarAbierto(false);
+                  setArchivoAEliminar(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={eliminandoArchivo}
+                onClick={handleEjecutarEliminacion}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{eliminandoArchivo ? 'Eliminando...' : 'Sí, Eliminar Archivo'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
