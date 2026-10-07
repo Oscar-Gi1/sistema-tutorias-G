@@ -84,9 +84,16 @@ function AppContent() {
       setTutorados(res.data);
     }
 
-    const resCitas = await tutoriaService.getMiTutoriaComoAlumno(estudianteActivo.id);
-    if (resCitas.data?.citas) {
-      setCitas(resCitas.data.citas);
+    if (userRole === 'tutor') {
+      const resCitasTutor = await tutoriaService.getCitasPorTutor(tutorActivo.id);
+      if (resCitasTutor.data) {
+        setCitas(resCitasTutor.data);
+      }
+    } else {
+      const resCitas = await tutoriaService.getMiTutoriaComoAlumno(estudianteActivo.id);
+      if (resCitas.data?.citas) {
+        setCitas(resCitas.data.citas);
+      }
     }
 
     const tuts = await tutoriaService.getCatalogoTutores();
@@ -104,7 +111,7 @@ function AppContent() {
       });
       return () => unsub();
     }
-  }, [isAuthenticated, tutorActivo.id, estudianteActivo.id]);
+  }, [isAuthenticated, userRole, tutorActivo.id, estudianteActivo.id]);
 
   // ========================================================
   // DECISIÓN CONDICIONAL EN RAÍZ:
@@ -131,18 +138,25 @@ function AppContent() {
   const proximasSesionesResumen =
     citas.length > 0
       ? citas.slice(0, 3).map((cita, idx) => {
-          const alumno = catalogoEstudiantes.find((e) => e.id === cita.estudianteId) || estudianteActivo;
+          const esGrupal = cita.esGrupal || cita.estudianteId === 'GRUPAL' || (cita.estudiantesIds && cita.estudiantesIds.length > 1);
+          const alumno = !esGrupal
+            ? catalogoEstudiantes.find((e) => e.id === cita.estudianteId) || estudianteActivo
+            : null;
+
           return {
             id: cita.id || `ses-${idx}`,
             hora: cita.hora,
             fecha: cita.fecha,
-            alumno: alumno.nombre,
-            carrera: alumno.carrera,
-            semestre: alumno.semestre,
+            alumno: esGrupal
+              ? `Sesión Grupal (${cita.estudiantesIds?.length || 0} alumnos)`
+              : alumno?.nombre || 'Estudiante Tutorado',
+            carrera: esGrupal ? 'Tutoría Grupal' : alumno?.carrera || '',
+            semestre: esGrupal ? 1 : alumno?.semestre || 1,
             modalidad: cita.modalidad,
-            cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : cita.lugar || tutorActivo.cubículo,
+            cubículo: cita.modalidad === 'Virtual' ? 'Google Meet' : cita.lugar || (esGrupal ? 'Aula Magna' : tutorActivo.cubículo),
             urgente: cita.estado === 'Pendiente',
-            tema: cita.tema
+            tema: cita.tema,
+            esGrupal
           };
         })
       : [];
@@ -397,7 +411,13 @@ function AppContent() {
               {/* 2. Agenda (Calendario) */}
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  <VisualCalendarWidget citas={citas} onNuevaSesion={() => {}} />
+                  <VisualCalendarWidget
+                    citas={citas}
+                    rolActivo="TUTOR"
+                    tutorActivo={tutorActivo}
+                    estudianteActivo={estudianteActivo}
+                    catalogoEstudiantes={catalogoEstudiantes}
+                  />
 
                   <CalendarioSesionesView
                     rolActivo="TUTOR"
@@ -437,7 +457,13 @@ function AppContent() {
               {/* 2. Mis Reuniones */}
               {seccionActiva === 'calendario' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  <VisualCalendarWidget citas={citas} onNuevaSesion={() => {}} />
+                  <VisualCalendarWidget
+                    citas={citas}
+                    rolActivo="ALUMNO"
+                    tutorActivo={tutorActivo}
+                    estudianteActivo={estudianteActivo}
+                    catalogoEstudiantes={catalogoEstudiantes}
+                  />
 
                   <CalendarioSesionesView
                     rolActivo="ALUMNO"

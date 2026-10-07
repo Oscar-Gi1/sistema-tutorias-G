@@ -128,7 +128,8 @@ export interface AsignarTutoradoPayload {
 
 export interface CitaAsesoria {
   id: string;
-  estudianteId: string;
+  estudianteId: string; // ID del estudiante principal o 'GRUPAL'
+  estudiantesIds?: string[]; // Para sesiones grupales: lista de IDs de estudiantes participantes
   tutorId: string;
   fecha: string;
   hora: string;
@@ -138,9 +139,20 @@ export interface CitaAsesoria {
   lugar?: string;
   enlaceVirtual?: string;
   motivoDetalle?: string;
-  tipo?: 'INDIVIDUAL' | 'GRUPAL';
-  estudiantesIds?: string[];
-  cupoMaximo?: number;
+  esGrupal?: boolean;
+  confirmaciones?: Record<string, 'Confirmada' | 'Pendiente' | 'Rechazada'>; // Confirmación individual por alumno
+}
+
+export interface AgendarSesionGrupalPayload {
+  tutorId: string;
+  estudiantesIds: string[];
+  tema: string;
+  fecha: string;
+  hora: string;
+  modalidad: 'Presencial' | 'Virtual';
+  lugar?: string;
+  enlaceVirtual?: string;
+  motivoDetalle?: string;
 }
 
 export interface SolicitarAsesoriaPayload {
@@ -212,6 +224,14 @@ export interface RevisarArchivoPayload {
   archivoId: string;
   estadoRevision: EstadoRevisionArchivo;
   comentarioTutor: string;
+}
+
+export interface EditarArchivoPayload {
+  archivoId: string;
+  nombre?: string;
+  descripcion?: string;
+  categoria?: CategoriaArchivo;
+  comentarioTutor?: string;
 }
 
 export interface ActividadAsignada {

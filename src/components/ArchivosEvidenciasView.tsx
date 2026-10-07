@@ -6,7 +6,8 @@ import {
   Tutor,
   EstudianteCatalogo,
   CategoriaArchivo,
-  EstadoRevisionArchivo
+  EstadoRevisionArchivo,
+  EditarArchivoPayload
 } from '../types/tutoria';
 import { tutoriaService } from '../services/tutoriaService';
 import {
@@ -24,6 +25,7 @@ import {
   AlertTriangle,
   Clock,
   Trash2,
+  Edit3,
   Search,
   Filter,
   PlusCircle,
@@ -121,6 +123,20 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
   const [actDescripcion, setActDescripcion] = useState('');
   const [actFechaLimite, setActFechaLimite] = useState('2026-10-30');
   const [actEstudianteId, setActEstudianteId] = useState('TODOS');
+
+  // Estados para Edición de Archivos (Tutor y Alumno)
+  const [modalEditarAbierto, setModalEditarAbierto] = useState(false);
+  const [archivoEnEdicion, setArchivoEnEdicion] = useState<ArchivoSistema | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+  const [editCategoria, setEditCategoria] = useState<CategoriaArchivo>('Evidencia');
+  const [editComentarioTutor, setEditComentarioTutor] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  // Estados para Confirmación de Eliminación de Archivos
+  const [modalConfirmarBorradoAbierto, setModalConfirmarBorradoAbierto] = useState(false);
+  const [archivoParaBorrar, setArchivoParaBorrar] = useState<ArchivoSistema | null>(null);
+  const [borrando, setBorrando] = useState(false);
 
   const cargarDatos = async () => {
     setCargando(true);
@@ -304,6 +320,80 @@ export const ArchivosEvidenciasView: React.FC<ArchivosEvidenciasViewProps> = ({
     setModalVisorAbierto(false);
     if (blobUrlActual && blobUrlActual.startsWith('blob:')) {
       URL.revokeObjectURL(blobUrlActual);
+  // Verificación de permisos según rol institucional
+  const puedeEditarOEliminar = (archivo: ArchivoSistema): boolean => {
+    if (rolActivo === 'TUTOR') return true;
+    return archivo.autorId === estudianteActivo.id || archivo.autorRol === 'TUTORADO';
+  };
+
+  // Abrir modal de edición con datos precargados
+  const handleAbrirEditar = (archivo: ArchivoSistema) => {
+    setArchivoEnEdicion(archivo);
+    setEditNombre(archivo.nombre);
+    setEditDescripcion(archivo.descripcion || '');
+    setEditCategoria(archivo.categoria);
+    setEditComentarioTutor(archivo.comentarioTutor || '');
+    setModalEditarAbierto(true);
+  };
+
+  // Guardar cambios editados en el archivo
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!archivoEnEdicion) return;
+    setGuardandoEdicion(true);
+
+    const payload: EditarArchivoPayload = {
+      archivoId: archivoEnEdicion.id,
+      nombre: editNombre.trim() || archivoEnEdicion.nombre,
+      descripcion: editDescripcion.trim(),
+      categoria: editCategoria,
+      comentarioTutor: rolActivo === 'TUTOR' ? editComentarioTutor.trim() : undefined
+    };
+
+    const res = await tutoriaService.editarArchivo(payload, {
+      id: rolActivo === 'TUTOR' ? tutorActivo.id : estudianteActivo.id,
+      rol: rolActivo === 'TUTOR' ? 'TUTOR' : 'TUTORADO'
+    });
+
+    setGuardandoEdicion(false);
+
+    if (res.success) {
+      setMensajeAlerta({ texto: res.message, tipo: 'ok' });
+      setModalEditarAbierto(false);
+      setArchivoEnEdicion(null);
+      await cargarDatos();
+      setTimeout(() => setMensajeAlerta(null), 3500);
+    } else {
+      setMensajeAlerta({ texto: res.message, tipo: 'error' });
+    }
+  };
+
+  // Abrir modal de confirmación antes de borrar
+  const handleAbrirConfirmarBorrado = (archivo: ArchivoSistema) => {
+    setArchivoParaBorrar(archivo);
+    setModalConfirmarBorradoAbierto(true);
+  };
+
+  // Ejecutar eliminación confirmada con persistencia
+  const handleConfirmarBorrado = async () => {
+    if (!archivoParaBorrar) return;
+    setBorrando(true);
+
+    const res = await tutoriaService.eliminarArchivo(archivoParaBorrar.id, {
+      id: rolActivo === 'TUTOR' ? tutorActivo.id : estudianteActivo.id,
+      rol: rolActivo === 'TUTOR' ? 'TUTOR' : 'TUTORADO'
+    });
+
+    setBorrando(false);
+
+    if (res.success) {
+      setMensajeAlerta({ texto: res.message, tipo: 'ok' });
+      setModalConfirmarBorradoAbierto(false);
+      setArchivoParaBorrar(null);
+      await cargarDatos();
+      setTimeout(() => setMensajeAlerta(null), 3500);
+    } else {
+      setMensajeAlerta({ texto: res.message, tipo: 'error' });
     }
     setBlobUrlActual('');
     setArchivoAVisualizar(null);
