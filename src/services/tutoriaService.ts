@@ -11,6 +11,7 @@ import {
   ArchivoSistema,
   SubirArchivoPayload,
   RevisarArchivoPayload,
+  ActualizarArchivoPayload,
   ActividadAsignada,
   CrearActividadPayload,
   NotaPersonalItem,
@@ -129,6 +130,21 @@ export const CITAS_INICIALES: CitaAsesoria[] = [
     estado: 'Pendiente',
     enlaceVirtual: 'https://meet.google.com/xyz-tutor-2026',
     motivoDetalle: 'Dudas sobre carga horaria y requisitos de materias del 3er semestre.'
+  },
+  {
+    id: 'cita-004',
+    estudianteId: 'TODOS',
+    tutorId: 'tutor-001',
+    fecha: '2026-10-22',
+    hora: '12:00 PM',
+    tema: 'Tutoría Grupal: Inducción, Técnicas de Estudio y Exámenes Parciales',
+    modalidad: 'Presencial',
+    estado: 'Confirmada',
+    tipo: 'GRUPAL',
+    estudiantesIds: ['est-101', 'est-102', 'est-103', 'est-104'],
+    cupoMaximo: 25,
+    lugar: 'Aula Magna de Tutorías UAT - Edificio Central',
+    motivoDetalle: 'Sesión institucional grupal sobre estrategias de aprendizaje, calendario de evaluaciones y normatividad escolar UAT.'
   }
 ];
 
@@ -742,7 +758,12 @@ class TutoriaBackendService {
       tutor = TUTORES_DEMO.find(t => t.id === asignacion.tutorId) || null;
     }
 
-    const citasEstudiante = this.citas.filter(c => c.estudianteId === estudianteId);
+    const citasEstudiante = this.citas.filter(
+      c => c.estudianteId === estudianteId ||
+           c.estudianteId === 'TODOS' ||
+           c.tipo === 'GRUPAL' ||
+           (c.estudiantesIds && c.estudiantesIds.includes(estudianteId))
+    );
 
     const res = {
       success: true,
@@ -762,7 +783,7 @@ class TutoriaBackendService {
 
   /**
    * ENDPOINT VISTA ALUMNO: POST /api/alumno/solicitar-cita
-   * Registra una nueva solicitud de asesoría o cita de tutoría
+   * Registra una nueva solicitud de asesoría o cita de tutoría (Individual o Grupal)
    */
   public async solicitarCitaComoAlumno(payload: SolicitarAsesoriaPayload): Promise<ApiResponse<CitaAsesoria>> {
     if (!payload.tema.trim() || !payload.fecha || !payload.hora) {
@@ -774,6 +795,8 @@ class TutoriaBackendService {
       };
     }
 
+    const esGrupal = payload.tipo === 'GRUPAL' || payload.estudianteId === 'TODOS';
+
     const nuevaCita: CitaAsesoria = {
       id: 'cita-' + Date.now().toString(36),
       estudianteId: payload.estudianteId,
@@ -783,9 +806,14 @@ class TutoriaBackendService {
       tema: payload.tema.trim(),
       modalidad: payload.modalidad,
       estado: 'Confirmada',
-      lugar: payload.modalidad === 'Presencial' ? 'Cubículo del Tutor (Confirmado)' : undefined,
+      lugar: payload.modalidad === 'Presencial'
+        ? (esGrupal ? 'Aula Magna de Tutorías UAT - Edificio B' : 'Cubículo del Tutor (Confirmado)')
+        : undefined,
       enlaceVirtual: payload.modalidad === 'Virtual' ? 'https://meet.google.com/tutoria-pro-sesion' : undefined,
-      motivoDetalle: payload.motivoDetalle?.trim()
+      motivoDetalle: payload.motivoDetalle?.trim(),
+      tipo: esGrupal ? 'GRUPAL' : 'INDIVIDUAL',
+      estudiantesIds: payload.estudiantesIds || (payload.estudianteId ? [payload.estudianteId] : []),
+      cupoMaximo: payload.cupoMaximo || (esGrupal ? 25 : 1)
     };
 
     this.citas.unshift(nuevaCita);
@@ -822,6 +850,21 @@ class TutoriaBackendService {
   }
 
   /**
+   * ENDPOINT: GET /api/tutor/citas
+   * Recupera todas las citas del tutor (individuales de todos sus alumnos y sesiones grupales)
+   */
+  public async getCitasTutor(tutorId: string): Promise<ApiResponse<CitaAsesoria[]>> {
+    const list = this.citas.filter(c => c.tutorId === tutorId || !c.tutorId);
+    return {
+      success: true,
+      message: `Se recuperaron ${list.length} sesiones del tutor.`,
+      data: list,
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
    * ENDPOINT: GET /api/archivos
    * Recupera archivos filtrados por tutorado, tutor o categoría
    */
@@ -831,12 +874,32 @@ class TutoriaBackendService {
     categoria?: string;
     rol?: string;
   }): Promise<ApiResponse<ArchivoSistema[]>> {
-    // Si la memoria está vacía, intentar hidratar de IndexedDB
-    if (this.archivos.length === 0) {
+    // Si la memoria está vacía o contiene archivos sin contenidoDataUrl, hidratar desde IndexedDB
+    const necesitaHidratar =
+      this.archivos.length === 0 ||
+      this.archivos.some((a) => !a.contenidoDataUrl || a.contenidoDataUrl === '[ALMACENADO_EN_INDEXEDDB]');
+
+    if (necesitaHidratar) {
       try {
         const dbArchivos = await dbStorage.getAll<ArchivoSistema>('archivos');
         if (dbArchivos && dbArchivos.length > 0) {
-          this.archivos = dbArchivos;
+          const dbMap = new Map(dbArchivos.map((a) => [String(a.id), a]));
+          if (this.archivos.length === 0) {
+            this.archivos = dbArchivos;
+          } else {
+            this.archivos = this.archivos.map((a) => {
+              const fromDb = dbMap.get(String(a.id));
+              if (fromDb && fromDb.contenidoDataUrl && (!a.contenidoDataUrl || a.contenidoDataUrl.length < fromDb.contenidoDataUrl.length)) {
+                return { ...a, contenidoDataUrl: fromDb.contenidoDataUrl };
+              }
+              return a;
+            });
+            for (const d of dbArchivos) {
+              if (!this.archivos.some((a) => String(a.id) === String(d.id))) {
+                this.archivos.push(d);
+              }
+            }
+          }
         }
       } catch (e) {
         console.warn('Error al leer archivos de IndexedDB:', e);
@@ -846,19 +909,21 @@ class TutoriaBackendService {
     let res = [...this.archivos];
 
     if (filtros?.tutoradoId && filtros.tutoradoId !== 'TODOS') {
-      res = res.filter(a => a.tutoradoId === filtros.tutoradoId || a.categoria === 'Material de Apoyo');
+      res = res.filter(
+        (a) => a.tutoradoId === filtros.tutoradoId || a.autorId === filtros.tutoradoId || a.categoria === 'Material de Apoyo'
+      );
     }
 
     if (filtros?.tutorId && filtros.tutorId !== 'TODOS') {
-      res = res.filter(a => a.tutorId === filtros.tutorId || !a.tutorId);
+      res = res.filter((a) => a.tutorId === filtros.tutorId || !a.tutorId || a.autorId === filtros.tutorId);
     }
 
     if (filtros?.categoria && filtros.categoria !== 'TODAS') {
-      res = res.filter(a => a.categoria === filtros.categoria);
+      res = res.filter((a) => a.categoria === filtros.categoria);
     }
 
     if (filtros?.rol && filtros.rol !== 'TODOS') {
-      res = res.filter(a => a.autorRol === filtros.rol);
+      res = res.filter((a) => a.autorRol === filtros.rol);
     }
 
     // Ordenar de más reciente a más antiguo
@@ -919,6 +984,14 @@ class TutoriaBackendService {
     };
 
     this.archivos.unshift(nuevoArchivo);
+
+    // Guardar directamente en IndexedDB de inmediato
+    try {
+      await dbStorage.put('archivos', nuevoArchivo);
+    } catch (e) {
+      console.warn('Error al guardar archivo en IndexedDB:', e);
+    }
+
     await this.saveArchivosAsync();
 
     const okRes: ApiResponse<ArchivoSistema> = {
@@ -938,6 +1011,52 @@ class TutoriaBackendService {
   }
 
   /**
+   * ENDPOINT: PATCH /api/archivos/:id
+   * Permite editar metadatos del archivo (nombre, categoría, descripción)
+   */
+  public async actualizarArchivo(
+    payload: ActualizarArchivoPayload,
+    usuarioId: string
+  ): Promise<ApiResponse<ArchivoSistema>> {
+    const idx = this.archivos.findIndex((a) => String(a.id) === String(payload.archivoId));
+    if (idx === -1) {
+      return {
+        success: false,
+        message: 'Archivo no encontrado.',
+        statusCode: 404,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    if (payload.nombre && payload.nombre.trim()) {
+      this.archivos[idx].nombre = payload.nombre.trim();
+    }
+    if (payload.categoria) {
+      this.archivos[idx].categoria = payload.categoria;
+    }
+    if (payload.descripcion !== undefined) {
+      this.archivos[idx].descripcion = payload.descripcion.trim();
+    }
+
+    try {
+      await dbStorage.put('archivos', this.archivos[idx]);
+    } catch {}
+
+    await this.saveArchivosAsync();
+
+    const okRes: ApiResponse<ArchivoSistema> = {
+      success: true,
+      message: 'Documento actualizado correctamente.',
+      data: this.archivos[idx],
+      statusCode: 200,
+      timestamp: new Date().toISOString()
+    };
+
+    this.logHttp('PATCH', `/api/archivos/${payload.archivoId}`, 200, usuarioId, okRes, payload);
+    return okRes;
+  }
+
+  /**
    * ENDPOINT: PATCH /api/archivos/:id/revisar
    * Permite al Tutor marcar como revisado y agregar comentarios / retroalimentación
    */
@@ -945,7 +1064,7 @@ class TutoriaBackendService {
     payload: RevisarArchivoPayload,
     tutorId: string
   ): Promise<ApiResponse<ArchivoSistema>> {
-    const idx = this.archivos.findIndex(a => a.id === payload.archivoId);
+    const idx = this.archivos.findIndex((a) => a.id === payload.archivoId);
     if (idx === -1) {
       return {
         success: false,
@@ -958,6 +1077,11 @@ class TutoriaBackendService {
     this.archivos[idx].estadoRevision = payload.estadoRevision;
     this.archivos[idx].comentarioTutor = payload.comentarioTutor?.trim();
     this.archivos[idx].fechaRevision = new Date().toISOString();
+
+    try {
+      await dbStorage.put('archivos', this.archivos[idx]);
+    } catch {}
+
     await this.saveArchivosAsync();
 
     const okRes: ApiResponse<ArchivoSistema> = {
@@ -976,7 +1100,7 @@ class TutoriaBackendService {
    * ENDPOINT: DELETE /api/archivos/:id
    */
   public async eliminarArchivo(archivoId: string): Promise<ApiResponse<{ id: string }>> {
-    const idx = this.archivos.findIndex(a => String(a.id) === String(archivoId));
+    const idx = this.archivos.findIndex((a) => String(a.id) === String(archivoId));
     if (idx === -1) {
       return {
         success: false,
@@ -986,13 +1110,33 @@ class TutoriaBackendService {
       };
     }
 
-    this.archivos.splice(idx, 1);
-    await dbStorage.delete('archivos', archivoId);
-    await this.saveArchivosAsync();
+    const archivoEliminado = this.archivos.splice(idx, 1)[0];
+
+    try {
+      await dbStorage.delete('archivos', archivoId);
+    } catch (e) {
+      console.warn('Error al borrar archivo de IndexedDB:', e);
+    }
+
+    try {
+      localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(this.archivos));
+    } catch {
+      try {
+        const ligero = this.archivos.map((a) => {
+          if (a.contenidoDataUrl && a.contenidoDataUrl.length > 25000) {
+            return { ...a, contenidoDataUrl: '' };
+          }
+          return a;
+        });
+        localStorage.setItem(ARCHIVOS_STORAGE_KEY, JSON.stringify(ligero));
+      } catch {}
+    }
+
+    this.notify();
 
     return {
       success: true,
-      message: 'Archivo eliminado correctamente del almacenamiento persistente.',
+      message: `Documento "${archivoEliminado.nombre}" eliminado permanentemente.`,
       data: { id: archivoId },
       statusCode: 200,
       timestamp: new Date().toISOString()

@@ -138,6 +138,9 @@ export interface CitaAsesoria {
   lugar?: string;
   enlaceVirtual?: string;
   motivoDetalle?: string;
+  tipo?: 'INDIVIDUAL' | 'GRUPAL';
+  estudiantesIds?: string[];
+  cupoMaximo?: number;
 }
 
 export interface SolicitarAsesoriaPayload {
@@ -148,6 +151,16 @@ export interface SolicitarAsesoriaPayload {
   hora: string;
   modalidad: 'Presencial' | 'Virtual';
   motivoDetalle: string;
+  tipo?: 'INDIVIDUAL' | 'GRUPAL';
+  estudiantesIds?: string[];
+  cupoMaximo?: number;
+}
+
+export interface ActualizarArchivoPayload {
+  archivoId: string;
+  nombre?: string;
+  categoria?: CategoriaArchivo;
+  descripcion?: string;
 }
 
 export interface ApiResponse<T = any> {
